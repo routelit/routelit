@@ -4,9 +4,7 @@ from .domain import ViteComponentsAssets
 
 
 def get_vite_manifest(package_name: str):
-    manifest_path = resources.files(package_name).joinpath(
-        "static", ".vite", "manifest.json"
-    )
+    manifest_path = resources.files(package_name).joinpath("static", ".vite", "manifest.json")
 
     if manifest_path.exists():
         with open(manifest_path) as f:
@@ -20,11 +18,9 @@ def get_vite_components_assets(package_name: str) -> ViteComponentsAssets:
     css_files = []
     for source in manifest.values():
         filename = source["file"]
-        is_js = filename.endswith(".js")
-        is_css = filename.endswith(".css")
-        if is_js:
+        if filename.endswith(".js"):
             js_files.append(filename)
-        elif is_css:
+        elif filename.endswith(".css"):
             css_files.append(filename)
         _css_files = source.get("css", [])
         for css_file in _css_files:

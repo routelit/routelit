@@ -20,7 +20,7 @@ from .domain import (
 )
 from .utils import compare_elements
 from .assets_utils import get_vite_components_assets
-from .exceptions import RerunException, StopExecutionException
+from .exceptions import RerunException, EmptyReturnException
 
 ViewFn = Callable[[RouteLitBuilder, Dict[str, Any]], None]
 
@@ -85,7 +85,7 @@ class RouteLit:
         except RerunException as e:
             self.session_storage[session_state_key] = e.state
             return self.handle_post_request(view_fn, request, **kwargs)
-        except StopExecutionException:
+        except EmptyReturnException:
             # No need to return anything
             return []
 
@@ -98,7 +98,7 @@ class RouteLit:
         if request.get_query_param("__routelit_clear_session_state"):
             del self.session_storage[session_state_key]
             del self.session_storage[ui_session_key]
-            raise StopExecutionException()
+            raise EmptyReturnException()
 
     def client_assets(self) -> List[ViteComponentsAssets]:
         """

@@ -7,7 +7,7 @@ type Handler = (args: RouteLitComponent[]) => void;
 export class RouteLitManager {
   private listeners: Array<Handler> = [];
   private componentVersionListeners: Array<(v: number) => void> = [];
-  componentStore: Map<string, React.ComponentType<any>> = new Map();
+  private componentStore: Map<string, React.ComponentType<any>> = new Map();
   private componentStoreVersion = 0;
 
   constructor(private componentsTree: RouteLitComponent[]) {}

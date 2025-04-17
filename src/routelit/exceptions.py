@@ -1,4 +1,5 @@
-from typing import Any, MutableMapping
+from collections.abc import MutableMapping
+from typing import Any
 
 
 class RerunException(Exception):
@@ -13,8 +14,10 @@ class RerunException(Exception):
     def state(self) -> MutableMapping[str, Any]:
         return self._state
 
-class StopExecutionException(Exception):
+
+class EmptyReturnException(Exception):
     """
     Exception raised to stop the execution of the view function.
     """
+
     pass
