@@ -100,6 +100,7 @@ class RouteLitRequest(ABC):
     def clear_event(self):
         pass
 
+
 class AssetTarget(TypedDict):
     package_name: str
     path: str
@@ -110,6 +111,7 @@ class ViteComponentsAssets:
     package_name: str
     js_files: List[str]
     css_files: List[str]
+
 
 class RouteLitBuilder:
     static_assets_targets: Sequence[AssetTarget] = []
@@ -218,4 +220,3 @@ class RouteLitBuilder:
     @classmethod
     def get_client_resource_paths(cls) -> Sequence[AssetTarget]:
         return cls.static_assets_targets
-
