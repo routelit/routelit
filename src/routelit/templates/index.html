@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flask + Vite + React</title>
+    <!-- In development: Load from Vite dev server -->
+    {% if DEBUG %}
+    <script type="module">
+      import RefreshRuntime from "{{ LOCAL_FRONTEND_SERVER }}/@react-refresh";
+      RefreshRuntime.injectIntoGlobalHook(window);
+      window.$RefreshReg$ = () => {};
+      window.$RefreshSig$ = () => (type) => type;
+      window.__vite_plugin_react_preamble_installed__ = true;
+    </script>
+    <script type="module" src="{{ LOCAL_FRONTEND_SERVER }}/@vite/client"></script>
+    <script type="module" src="{{ LOCAL_FRONTEND_SERVER }}/src/main.jsx"></script>
+    {% else %}
+    <!-- In production: Load from built files -->
+    {% for css_asset in default_vite_assets.css_files %}
+      <link rel="stylesheet" href="/routelit/{{ css_asset }}">
+    {% endfor %}
+    <!-- custom elements sources -->
+    {% for assets_group in vite_assets %}
+      {% for asset in assets_group.css_files   %}
+      <link rel="stylesheet" href="/routelit/{{ assets_group.package_name }}/{{ asset }}">
+      {% endfor %}
+    {% endfor %}
+    {% endif %}
+  </head>
+  <body>
+    <input id="routelit-data" type="hidden" value="{{ ROUTELIT_DATA }}" />
+    <div id="root">
+      <div style="text-align: center; padding: 2rem">
+        Loading application...
+      </div>
+    </div>
+    {% if not DEBUG %}
+
+    {% for js_asset in default_vite_assets.js_files %}
+    <script src="/routelit/{{ js_asset }}"></script>
+    {% endfor %}
+
+    {% for assets_group in vite_assets %}
+      {% for asset in assets_group.js_files %}
+      <script src="/routelit/{{ assets_group.package_name }}/{{ asset }}"></script>
+      {% endfor %}
+    {% endfor %}
+    {% endif %}
+  </body>
+</html>
