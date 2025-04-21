@@ -46,9 +46,7 @@ class RouteLit:
         else:
             raise ValueError(f"Unsupported request method: {request.method}")
 
-    def handle_get_request(
-        self, view_fn: ViewFn, request: RouteLitRequest, **kwargs
-    ) -> List[Dict[str, Any]]:
+    def handle_get_request(self, view_fn: ViewFn, request: RouteLitRequest, **kwargs) -> List[Dict[str, Any]]:
         builder = self.BuilderClass(request)
         ui_session_key, session_state_key = request.get_ui_session_keys()
         if session_state_key in self.session_storage:
@@ -60,19 +58,32 @@ class RouteLit:
         self.session_storage[session_state_key] = builder.session_state
         return [asdict(element) for element in elements]
 
-    def handle_post_request(
-        self, view_fn: ViewFn, request: RouteLitRequest, **kwargs
-    ) -> List[Dict[str, Any]]:
-        ui_session_key, session_state_key = request.get_ui_session_keys()
+    def _get_prev_keys(
+        self, request: RouteLitRequest, ui_sesion_state_keys: Tuple[str, str]
+    ) -> Tuple[bool, Tuple[str, str]]:
+        maybe_event = request.get_ui_event()
+        if maybe_event and maybe_event["type"] == "navigate":
+            ui_session_key, session_state_key = request.get_ui_session_keys(use_referer=True)
+            return True, (ui_session_key, session_state_key)
+        return False, ui_sesion_state_keys
+
+    def handle_post_request(self, view_fn: ViewFn, request: RouteLitRequest, **kwargs) -> List[Dict[str, Any]]:
+        # ui_session_key, session_state_key = request.get_ui_session_keys()
+        ui_sesion_state_keys = request.get_ui_session_keys()
+        ui_session_key, session_state_key = ui_sesion_state_keys
         try:
             self._maybe_clear_session_state(request, ui_session_key, session_state_key)
-            prev_elements = self.session_storage.get(ui_session_key, [])
-            prev_session_state = self.session_storage.get(session_state_key, {})
+            is_navigation, prev_ui_sesion_state_keys = self._get_prev_keys(request, ui_sesion_state_keys)
+            prev_ui_session_key, prev_session_state_key = prev_ui_sesion_state_keys
+            prev_elements = self.session_storage.get(prev_ui_session_key, [])
+            prev_session_state = self.session_storage.get(prev_session_state_key, {})
             builder = self.BuilderClass(request, session_state=prev_session_state)
             view_fn(builder, **kwargs)
             elements = builder.get_elements()
             self.session_storage[ui_session_key] = elements
             self.session_storage[session_state_key] = builder.session_state
+            if is_navigation:
+                self._clear_session_state(prev_ui_session_key, prev_session_state_key)
             actions = compare_elements(prev_elements, elements)
             return [asdict(action) for action in actions]
         except RerunException as e:
@@ -85,12 +96,13 @@ class RouteLit:
     def get_builder_class(self) -> Type[RouteLitBuilder]:
         return self.BuilderClass
 
-    def _maybe_clear_session_state(
-        self, request: RouteLitRequest, ui_session_key: str, session_state_key: str
-    ):
+    def _clear_session_state(self, ui_session_key: str, session_state_key: str):
+        del self.session_storage[session_state_key]
+        del self.session_storage[ui_session_key]
+
+    def _maybe_clear_session_state(self, request: RouteLitRequest, ui_session_key: str, session_state_key: str):
         if request.get_query_param("__routelit_clear_session_state"):
-            del self.session_storage[session_state_key]
-            del self.session_storage[ui_session_key]
+            self._clear_session_state(ui_session_key, session_state_key)
             raise EmptyReturnException()
 
     def client_assets(self) -> List[ViteComponentsAssets]:

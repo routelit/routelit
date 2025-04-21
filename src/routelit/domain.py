@@ -1,3 +1,4 @@
+from urllib.parse import urlparse
 from abc import ABC, abstractmethod
 from collections.abc import MutableMapping
 from dataclasses import dataclass, field
@@ -18,7 +19,7 @@ COOKIE_SESSION_KEY = "ROUTELIT_SESSION_ID"
 
 
 class RouteLitEvent(TypedDict):
-    type: Literal["click", "changed"]
+    type: Literal["click", "changed", "navigate"]
     component_id: str
     data: Dict[str, Any]
 
@@ -66,6 +67,10 @@ class RouteLitRequest(ABC):
         pass
 
     @abstractmethod
+    def get_referrer(self) -> Optional[str]:
+        pass
+
+    @abstractmethod
     def is_json(self) -> bool:
         pass
 
@@ -110,13 +115,20 @@ class RouteLitRequest(ABC):
         frament_id = self.get_query_param("__fragment") or ""
         return frament_id
 
-    def get_ui_session_keys(self) -> Tuple[str, str]:
+    def get_host_pathname(self, use_referer: bool = False) -> str:
+        if use_referer:
+            referrer = self.get_referrer()
+            url = urlparse(referrer)
+            if url.netloc and url.path:
+                return url.netloc + url.path
+        return self.get_host() + self.get_pathname()
+
+    def get_ui_session_keys(self, use_referer: bool = False) -> Tuple[str, str]:
         session_id = self.get_session_id()
-        host_pathname = self.get_host() + self.get_pathname()
+        host_pathname = self.get_host_pathname(use_referer)
         fragment_id = self.get_frament_id()
-        ui_session_key = f"{session_id}#{fragment_id}"
-        # session_state_key = f"{session_id}:{host_pathname}:state"
-        session_state_key = f"{session_id}:state"
+        ui_session_key = f"{session_id}:{host_pathname}:{fragment_id}"
+        session_state_key = f"{session_id}:{host_pathname}:state"
         return ui_session_key, session_state_key
 
 
