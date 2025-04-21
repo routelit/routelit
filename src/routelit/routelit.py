@@ -46,20 +46,13 @@ class RouteLit:
         else:
             raise ValueError(f"Unsupported request method: {request.method}")
 
-    @staticmethod
-    def _get_ui_session_key(request: RouteLitRequest) -> Tuple[str, str]:
-        session_id = request.get_session_id()
-        host_pathname = request.get_host() + request.get_pathname()
-        ui_session_key = f"{session_id}:{host_pathname}"
-        session_state_key = f"{session_id}:{host_pathname}:state"
-        return ui_session_key, session_state_key
-
     def handle_get_request(
         self, view_fn: ViewFn, request: RouteLitRequest, **kwargs
     ) -> List[Dict[str, Any]]:
         builder = self.BuilderClass(request)
-        ui_session_key, session_state_key = RouteLit._get_ui_session_key(request)
+        ui_session_key, session_state_key = request.get_ui_session_keys()
         if session_state_key in self.session_storage:
+            self.session_storage[ui_session_key].clear()
             self.session_storage[session_state_key].clear()
         view_fn(builder, **kwargs)
         elements = builder.get_elements()
@@ -70,7 +63,7 @@ class RouteLit:
     def handle_post_request(
         self, view_fn: ViewFn, request: RouteLitRequest, **kwargs
     ) -> List[Dict[str, Any]]:
-        ui_session_key, session_state_key = RouteLit._get_ui_session_key(request)
+        ui_session_key, session_state_key = request.get_ui_session_keys()
         try:
             self._maybe_clear_session_state(request, ui_session_key, session_state_key)
             prev_elements = self.session_storage.get(ui_session_key, [])

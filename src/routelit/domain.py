@@ -14,6 +14,8 @@ from typing import (
 
 from routelit.exceptions import RerunException
 
+COOKIE_SESSION_KEY = "ROUTELIT_SESSION_ID"
+
 
 class RouteLitEvent(TypedDict):
     type: Literal["click", "changed"]
@@ -60,6 +62,10 @@ class UpdateAction(Action):
 
 class RouteLitRequest(ABC):
     @abstractmethod
+    def get_headers(self) -> Dict[str, str]:
+        pass
+
+    @abstractmethod
     def is_json(self) -> bool:
         pass
 
@@ -100,6 +106,19 @@ class RouteLitRequest(ABC):
     def clear_event(self):
         pass
 
+    def get_frament_id(self) -> str:
+        frament_id = self.get_query_param("__fragment") or ""
+        return frament_id
+
+    def get_ui_session_keys(self) -> Tuple[str, str]:
+        session_id = self.get_session_id()
+        host_pathname = self.get_host() + self.get_pathname()
+        fragment_id = self.get_frament_id()
+        ui_session_key = f"{session_id}#{fragment_id}"
+        # session_state_key = f"{session_id}:{host_pathname}:state"
+        session_state_key = f"{session_id}:state"
+        return ui_session_key, session_state_key
+
 
 class AssetTarget(TypedDict):
     package_name: str
@@ -138,6 +157,11 @@ class RouteLitBuilder:
         if parent_element:
             self.parent_element.children = self.elements
         self.active_child_builder: Optional["RouteLitBuilder"] = None
+        if prefix is None:
+            self._on_init()
+
+    def _on_init(self):
+        pass
 
     def get_request(self) -> RouteLitRequest:
         return self.request
@@ -203,13 +227,18 @@ class RouteLitBuilder:
         # When using with builder.element():
         # Make parent builder redirect to this one
         if self.parent_builder:
+            self._prev_active_child_builder = self.parent_builder.active_child_builder
             self.parent_builder.active_child_builder = self
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         # Reset parent's active child when exiting context
         if self.parent_builder:
-            self.parent_builder.active_child_builder = None
+            if self._prev_active_child_builder:
+                self.parent_builder.active_child_builder = self._prev_active_child_builder
+                self._prev_active_child_builder = None
+            else:
+                self.parent_builder.active_child_builder = None
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         return self

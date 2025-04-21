@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import ReactRenderer from './core/react-renderer';
-import { manager } from './lib';
+import { manager, componentStore } from './lib';
 
 function App() {
   useEffect(() => {
@@ -10,7 +10,7 @@ function App() {
     }
   }, []);
   return (
-    <ReactRenderer manager={manager} />
+    <ReactRenderer manager={manager} componentStore={componentStore} />
   )
 }
 

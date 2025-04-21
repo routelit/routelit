@@ -1,4 +1,4 @@
-import { manager, RoutelitClient } from "./lib";
+import { manager, componentStore, RoutelitClient } from "./lib";
 
 // Export all necessary items
-export { manager, RoutelitClient };
+export { manager, componentStore, RoutelitClient };

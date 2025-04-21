@@ -1,5 +1,5 @@
 # from .builder import RouteLitBuilder
 from .routelit import RouteLit, ViewFn
-from .domain import RouteLitElement, Action, RouteLitRequest, RouteLitEvent, RouteLitBuilder, AssetTarget
+from .domain import RouteLitElement, Action, RouteLitRequest, RouteLitEvent, RouteLitBuilder, AssetTarget, COOKIE_SESSION_KEY
 
-__all__ = ["RouteLit", "RouteLitBuilder", "ViewFn", "RouteLitElement", "Action", "RouteLitRequest", "RouteLitEvent", "AssetTarget"]
+__all__ = ["RouteLit", "RouteLitBuilder", "ViewFn", "RouteLitElement", "Action", "RouteLitRequest", "RouteLitEvent", "AssetTarget", "COOKIE_SESSION_KEY"]

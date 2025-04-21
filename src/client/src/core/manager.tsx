@@ -1,14 +1,10 @@
 import { produce } from "immer";
 import { applyActions } from "./actions";
 import { sendEvent } from "./server-api";
-
 type Handler = (args: RouteLitComponent[]) => void;
 
 export class RouteLitManager {
   private listeners: Array<Handler> = [];
-  private componentVersionListeners: Array<(v: number) => void> = [];
-  private componentStore: Map<string, React.ComponentType<any>> = new Map();
-  private componentStoreVersion = 0;
 
   constructor(private componentsTree: RouteLitComponent[]) {}
 
@@ -25,7 +21,26 @@ export class RouteLitManager {
   };
 
   initialize = () => {
-    document.addEventListener("routelit:event", this.handleEvent as EventListener);
+    document.addEventListener(
+      "routelit:event",
+      this.handleEvent as EventListener
+    );
+    window.addEventListener("popstate", this.handlePopState as EventListener);
+  };
+
+  handlePopState = () => {
+    const currentUrl = window.location.href;
+    const navigateEvent = new CustomEvent<NavigateEventPayload>(
+      "routelit:event",
+      {
+        detail: {
+          type: "navigate",
+          id: "browser-navigation",
+          href: currentUrl,
+        },
+      }
+    );
+    document.dispatchEvent(navigateEvent);
   };
 
   terminate = () => {
@@ -33,22 +48,10 @@ export class RouteLitManager {
       "routelit:event",
       this.handleEvent as EventListener
     );
-  };
-
-  registerComponent = (name: string, component: React.ComponentType<any>) => {
-    this.componentStore.set(name, component);
-    this.componentStoreVersion++;
-    this.notifyListeners();
-  };
-
-  unregisterComponent = (name: string) => {
-    this.componentStore.delete(name);
-    this.componentStoreVersion++;
-    this.notifyListeners();
-  };
-
-  getComponent = (name: string) => {
-    return this.componentStore.get(name);
+    window.removeEventListener(
+      "popstate",
+      this.handlePopState as EventListener
+    );
   };
 
   getComponentsTree = (): RouteLitComponent[] => {
@@ -65,24 +68,6 @@ export class RouteLitManager {
   private notifyListeners = () => {
     for (const listener of this.listeners) {
       listener(this.componentsTree);
-    }
-  };
-  
-  getComponentStoreVersion = () => {
-    return this.componentStoreVersion;
-  };
-
-  subscribeComponentStoreVersion = (listener: (v: number) => void): (() => void) => {
-    this.componentVersionListeners.push(listener);
-    return () => {
-      this.componentVersionListeners = this.componentVersionListeners.filter((l) => l !== listener);
-    };
-  };
-
-  forceUpdate = () => {
-    this.componentStoreVersion++;
-    for (const listener of this.componentVersionListeners) {
-      listener(this.componentStoreVersion);
     }
   };
 }

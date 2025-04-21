@@ -1,18 +1,24 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { type RouteLitManager } from "./manager";
+import { type ComponentStore } from "./component-store";
 
-function ReactRenderer({ manager }: { manager: RouteLitManager }) {
+interface Props {
+  manager: RouteLitManager;
+  componentStore: ComponentStore;
+}
+
+function ReactRenderer({ manager, componentStore }: Props) {
   const componentsTree = useSyncExternalStore(
     manager.subscribe,
     manager.getComponentsTree
   );
   const componentStoreVersion = useSyncExternalStore(
-    manager.subscribeComponentStoreVersion,
-    manager.getComponentStoreVersion
+    componentStore.subscribe,
+    componentStore.getVersion
   );
   const renderComponentTree = useCallback(
     (c: RouteLitComponent): React.ReactNode => {
-      const Component = manager.getComponent(c.name);
+      const Component = componentStore.get(c.name);
       if (!Component) return null;
       return (
         <Component key={c.key} id={c.key} {...c.props}>
@@ -20,7 +26,7 @@ function ReactRenderer({ manager }: { manager: RouteLitManager }) {
         </Component>
       );
     },
-    [manager]
+    [componentStore]
   );
   return (
     <div className="routelit-container">

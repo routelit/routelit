@@ -3,10 +3,13 @@ import * as ReactDOM from 'react-dom';
 import * as jsxRuntime from 'react/jsx-runtime';
 
 import initManager from './core/initializer';
+import { ComponentStore } from './core/component-store';
 export const manager = initManager("routelit-data");
+export const componentStore = new ComponentStore();
 
 const RoutelitClient = {
   manager,
+  componentStore,
 };
 
 // Extend Window interface
