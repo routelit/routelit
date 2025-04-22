@@ -4,12 +4,28 @@ import * as jsxRuntime from 'react/jsx-runtime';
 
 import initManager from './core/initializer';
 import { ComponentStore } from './core/component-store';
-export const manager = initManager("routelit-data");
-export const componentStore = new ComponentStore();
+import Fragment from './components/fragment';
+import Link from './components/link';
+import { useDispatcherWith, useDispatcherWithAttr } from './core/context';
+
+const manager = initManager("routelit-data");
+const componentStore = new ComponentStore();
+export {
+  useDispatcherWith,
+  manager,
+  componentStore,
+  useDispatcherWithAttr,
+};
+
+componentStore.register("fragment", Fragment);
+componentStore.register("link", Link);
+componentStore.forceUpdate();
 
 const RoutelitClient = {
   manager,
   componentStore,
+  useDispatcherWith,
+  useDispatcherWithAttr,
 };
 
 // Extend Window interface

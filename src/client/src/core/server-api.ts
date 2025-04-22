@@ -1,10 +1,11 @@
 export async function sendEvent(
-  event: CustomEvent<UIEventPayload>
+  event: CustomEvent<UIEventPayload>,
+  fragmentId?: string
 ): Promise<Action[]> {
   if (event.detail.type === "navigate") {
     return await handleNavigate(event as CustomEvent<NavigateEventPayload>);
   }
-  return await handleUIEvent(event);
+  return await handleUIEvent(event, fragmentId);
 }
 
 interface RequestBody {
@@ -13,6 +14,7 @@ interface RequestBody {
     type: string;
     data: Record<string, unknown>;
   };
+  fragment_id?: string;
 }
 
 async function sendUIEvent(url: string, body: RequestBody): Promise<Action[]> {
@@ -30,7 +32,7 @@ async function sendUIEvent(url: string, body: RequestBody): Promise<Action[]> {
   return res.json();
 }
 
-async function handleUIEvent(event: CustomEvent<UIEventPayload>) {
+async function handleUIEvent(event: CustomEvent<UIEventPayload>, fragmentId?: string) {
   const { id, type, ...data } = event.detail;
   const url = new URL(window.location.href);
   const body: RequestBody = {
@@ -39,6 +41,7 @@ async function handleUIEvent(event: CustomEvent<UIEventPayload>) {
       type,
       data,
     },
+    fragment_id: fragmentId,
   };
   return await sendUIEvent(url.toString(), body);
 }

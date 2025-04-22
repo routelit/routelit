@@ -8,6 +8,8 @@ from typing import (
     Union,
     Type,
 )
+import functools
+
 from collections.abc import MutableMapping
 
 from dataclasses import asdict
@@ -22,7 +24,7 @@ from .utils import compare_elements
 from .assets_utils import get_vite_components_assets
 from .exceptions import RerunException, EmptyReturnException
 
-ViewFn = Callable[[RouteLitBuilder, Dict[str, Any]], None]
+ViewFn = Callable[[RouteLitBuilder, Dict[str, Any]], Any]
 
 
 class RouteLit:
@@ -61,14 +63,13 @@ class RouteLit:
     def _get_prev_keys(
         self, request: RouteLitRequest, ui_sesion_state_keys: Tuple[str, str]
     ) -> Tuple[bool, Tuple[str, str]]:
-        maybe_event = request.get_ui_event()
+        maybe_event = request._get_ui_event()
         if maybe_event and maybe_event["type"] == "navigate":
             ui_session_key, session_state_key = request.get_ui_session_keys(use_referer=True)
             return True, (ui_session_key, session_state_key)
         return False, ui_sesion_state_keys
 
     def handle_post_request(self, view_fn: ViewFn, request: RouteLitRequest, **kwargs) -> List[Dict[str, Any]]:
-        # ui_session_key, session_state_key = request.get_ui_session_keys()
         ui_sesion_state_keys = request.get_ui_session_keys()
         ui_session_key, session_state_key = ui_sesion_state_keys
         try:
@@ -119,3 +120,13 @@ class RouteLit:
 
     def default_client_assets(self) -> List[ViteComponentsAssets]:
         return get_vite_components_assets("routelit")
+
+
+    def fragment(self, key: Optional[str] = None):
+        def decorator_fragment(func: ViewFn):
+            @functools.wraps(func)
+            def wrapper(rl: RouteLitBuilder, *args, **kwargs):
+                with rl._fragment(key) as rl2:
+                    return func(rl2, *args, **kwargs)
+            return wrapper
+        return decorator_fragment

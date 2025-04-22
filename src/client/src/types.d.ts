@@ -34,6 +34,15 @@ interface UpdateAction extends Action {
 interface UIEventPayload {
     type: string;
     id: string;
+    [key: string]: any;
+}
+
+interface NavigateEventPayload extends UIEventPayload {
+    type: "navigate";
+    href: string;
+    isExternal?: boolean;
+    replace?: boolean;
+    target?: "_blank" | "_self";
 }
 
 interface ChangeEventPayload extends UIEventPayload {

@@ -10,3 +10,18 @@ body {
 .routelit-container {
   display: contents;
 }
+
+.no-link-decoration {
+  text-decoration: none;
+  color: inherit;
+}
+
+.no-link-decoration:hover {
+  text-decoration: none;
+  color: inherit;
+}
+
+.no-link-decoration:active {
+  text-decoration: none;
+  color: inherit;
+}

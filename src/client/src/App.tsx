@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import ReactRenderer from './core/react-renderer';
 import { manager, componentStore } from './lib';
+import { RouteLitContext } from './core/context';
+
 
 function App() {
   useEffect(() => {
@@ -10,7 +12,9 @@ function App() {
     }
   }, []);
   return (
-    <ReactRenderer manager={manager} componentStore={componentStore} />
+    <RouteLitContext.Provider value={{ manager, componentStore }}>
+      <ReactRenderer manager={manager} componentStore={componentStore} />
+    </RouteLitContext.Provider>
   )
 }
 

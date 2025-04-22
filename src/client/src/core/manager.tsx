@@ -6,10 +6,17 @@ type Handler = (args: RouteLitComponent[]) => void;
 export class RouteLitManager {
   private listeners: Array<Handler> = [];
 
-  constructor(private componentsTree: RouteLitComponent[]) {}
+  constructor(
+    private componentsTree: RouteLitComponent[],
+    private fragmentId?: string
+  ) {}
 
   handleEvent = (e: CustomEvent<UIEventPayload>) => {
-    sendEvent(e).then(this.applyActions, console.error);
+    if (e.detail.type === "navigate" && this.fragmentId)
+      // Let the upper manager handle the navigation
+      return;
+    sendEvent(e, this.fragmentId).then(this.applyActions, console.error);
+    e.stopPropagation();
   };
 
   applyActions = (actions: Action[]) => {

@@ -78,9 +78,11 @@ class RouteLitRequest(ABC):
     def get_json(self) -> Optional[Any]:
         pass
 
-    @abstractmethod
-    def get_ui_event(self) -> Optional[RouteLitEvent]:
-        pass
+    def _get_ui_event(self) -> Optional[RouteLitEvent]:
+        if self.is_json():
+            return self.get_json().get("ui_event")
+        else:
+            return None
 
     @abstractmethod
     def get_query_param(self, key: str) -> Optional[str]:
@@ -111,9 +113,11 @@ class RouteLitRequest(ABC):
     def clear_event(self):
         pass
 
-    def get_frament_id(self) -> str:
-        frament_id = self.get_query_param("__fragment") or ""
-        return frament_id
+    def get_fragment_id(self) -> str:
+        if not self.is_json():
+            return ""
+        fragment_id = self.get_json().get("fragment_id") or ""
+        return fragment_id
 
     def get_host_pathname(self, use_referer: bool = False) -> str:
         if use_referer:
@@ -126,7 +130,7 @@ class RouteLitRequest(ABC):
     def get_ui_session_keys(self, use_referer: bool = False) -> Tuple[str, str]:
         session_id = self.get_session_id()
         host_pathname = self.get_host_pathname(use_referer)
-        fragment_id = self.get_frament_id()
+        fragment_id = self.get_fragment_id()
         ui_session_key = f"{session_id}:{host_pathname}:{fragment_id}"
         session_state_key = f"{session_id}:{host_pathname}:state"
         return ui_session_key, session_state_key
@@ -182,6 +186,16 @@ class RouteLitBuilder:
         # Simplify to just use the current prefix which is already properly initialized
         return self.prefix
 
+    def _build_nested_builder(self, element: RouteLitElement) -> "RouteLitBuilder":
+        builder = self.__class__(
+            self.request,
+            prefix=element.key,
+            session_state=self.session_state,
+            parent_element=element,
+            parent_builder=self,
+        )
+        return builder
+
     def _new_text_id(self, type: str) -> str:
         no_of_non_widgets = (
             self.num_non_widget if not self.active_child_builder else self.active_child_builder.num_non_widget
@@ -206,28 +220,86 @@ class RouteLitBuilder:
                 return True, event["data"][attribute]
         return False, None
 
-    def append_element(self, element: RouteLitElement):
+    def append_element(self, element: RouteLitElement) -> int:
+        """
+        Append an element to the current builder.
+        Returns the index of the element in the builder.
+        """
         if self.active_child_builder:
-            self.active_child_builder.append_element(element)
+            return self.active_child_builder.append_element(element)
         else:
             self.elements.append(element)
+            return len(self.elements) - 1
 
-    def add_non_widget(self, element: RouteLitElement):
+    def add_non_widget(self, element: RouteLitElement) -> RouteLitElement:
         self.append_element(element)
         if not self.active_child_builder:
             self.num_non_widget += 1
         else:
             self.active_child_builder.num_non_widget += 1
+        return element
 
     def add_widget(self, element: RouteLitElement):
         self.append_element(element)
 
     def create_element(
-        self, name: str, key: str, props: Dict[str, Any], children: List[RouteLitElement] = None
+        self,
+        name: str,
+        key: str,
+        props: Dict[str, Any],
+        children: List[RouteLitElement] = None,
     ) -> RouteLitElement:
         element = RouteLitElement(key=key, name=name, props=props, children=children)
         self.add_widget(element)
         return element
+
+    def _fragment(self, key: Optional[str] = None) -> "RouteLitBuilder":
+        key = key or self._new_text_id("fragment")
+        fragment = self.add_non_widget(RouteLitElement(key=key, name="fragment", props={"fragment_id": key}))
+        return self._build_nested_builder(fragment)
+
+    def link(
+        self,
+        href: str,
+        text: str = "",
+        replace: bool = False,
+        is_external: bool = False,
+        key: Optional[str] = None,
+        **kwargs,
+    ) -> RouteLitElement:
+        new_element = self.add_non_widget(
+            RouteLitElement(
+                key=key or self._new_text_id("link"),
+                name="link",
+                props={
+                    "href": href,
+                    "replace": replace,
+                    "is_external": is_external,
+                    "text": text,
+                    **kwargs,
+                },
+            )
+        )
+        return new_element
+
+    def link_area(
+        self,
+        href: str,
+        replace: bool = False,
+        is_external: bool = False,
+        key: Optional[str] = None,
+        className: Optional[str] = None,
+        **kwargs,
+    ) -> "RouteLitBuilder":
+        link_element = self.link(
+            href,
+            replace=replace,
+            is_external=is_external,
+            key=key,
+            className=f"no-link-decoration {className or ''}",
+            **kwargs,
+        )
+        return self._build_nested_builder(link_element)
 
     def rerun(self, clear_event: bool = True):
         self.elements.clear()

@@ -1,4 +1,4 @@
-import { manager, componentStore, RoutelitClient } from "./lib";
+import { manager, componentStore, RoutelitClient, useDispatcherWith, useDispatcherWithAttr } from "./lib";
 
 // Export all necessary items
-export { manager, componentStore, RoutelitClient };
+export { manager, componentStore, RoutelitClient, useDispatcherWith, useDispatcherWithAttr };
