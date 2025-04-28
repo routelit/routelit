@@ -1,7 +1,7 @@
 export async function sendEvent(
   event: CustomEvent<UIEventPayload>,
   fragmentId?: string
-): Promise<Action[]> {
+): Promise<ActionsResponse> {
   if (event.detail.type === "navigate") {
     return await handleNavigate(event as CustomEvent<NavigateEventPayload>);
   }
@@ -9,20 +9,21 @@ export async function sendEvent(
 }
 
 interface RequestBody {
-  ui_event: {
-    component_id: string;
+  uiEvent: {
+    componentId: string;
     type: string;
     data: Record<string, unknown>;
   };
-  fragment_id?: string;
+  fragmentId?: string;
 }
 
-async function sendUIEvent(url: string, body: RequestBody): Promise<Action[]> {
+async function sendUIEvent(url: string, body: RequestBody, headers?: Record<string, string>): Promise<ActionsResponse> {
   const res = await fetch(url, {
     method: "POST",
     body: JSON.stringify(body),
     headers: {
       "Content-Type": "application/json",
+      ...headers,
     },
     credentials: "include",
   });
@@ -36,21 +37,21 @@ async function handleUIEvent(event: CustomEvent<UIEventPayload>, fragmentId?: st
   const { id, type, ...data } = event.detail;
   const url = new URL(window.location.href);
   const body: RequestBody = {
-    ui_event: {
-      component_id: id,
+    uiEvent: {
+      componentId: id,
       type,
       data,
     },
-    fragment_id: fragmentId,
+    fragmentId,
   };
   return await sendUIEvent(url.toString(), body);
 }
 
 async function handleNavigate(event: CustomEvent<NavigateEventPayload>) {
-  const { href, id, type, ...data } = event.detail;
+  const { href, id, type, lastURL, ...data } = event.detail;
   const body: RequestBody = {
-    ui_event: {
-      component_id: id,
+    uiEvent: {
+      componentId: id,
       type,
       data: {
         ...data,
@@ -58,7 +59,11 @@ async function handleNavigate(event: CustomEvent<NavigateEventPayload>) {
       },
     },
   };
-  const response = await sendUIEvent(href, body);
+  const headers: Record<string, string> = {};
+  if (lastURL) {
+    headers["X-Referer"] = lastURL;
+  }
+  const response = await sendUIEvent(href, body, headers);
   if (event.detail.replace) {
     window.history.replaceState(null, "", href);
   } else {

@@ -1,6 +1,7 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { type RouteLitManager } from "./manager";
 import { type ComponentStore } from "./component-store";
+import Fragment from "../components/fragment";
 
 interface Props {
   manager: RouteLitManager;
@@ -12,43 +13,29 @@ function ReactRenderer({ manager, componentStore }: Props) {
     manager.subscribe,
     manager.getComponentsTree
   );
-  const componentStoreVersion = useSyncExternalStore(
+  // @ts-ignore
+  const _componentStoreVersion = useSyncExternalStore(
     componentStore.subscribe,
     componentStore.getVersion
   );
-  const renderComponentTree = useCallback(
-    (c: RouteLitComponent): React.ReactNode => {
-      const Component = componentStore.get(c.name);
-      if (!Component) return null;
-      if (c.name === "fragment") {
-        return (
-          <Component
-            key={c.key}
-            id={c.key}
-            fragmentId={c.props.fragment_id}
-            {...c.props}
-          >
-            {c.children}
-          </Component>
-        );
-      }
-
+  const renderComponentTree = (c: RouteLitComponent): React.ReactNode => {
+    const Component = componentStore.get(c.name);
+    if (!Component) return null;
+    if (c.name === "fragment") {
+      const { id, ...props } = c.props;
       return (
-        <Component key={c.key} id={c.key} {...c.props}>
-          {c.children?.map(renderComponentTree)}
-        </Component>
+        <Fragment key={c.key} id={id} address={c.address} {...props} />
       );
-    },
-    [componentStore]
-  );
-  console.log("componentStoreVersion", componentStoreVersion);
+    }
+
+    return (
+      <Component key={c.key} id={c.key} {...c.props}>
+        {c.children?.map(renderComponentTree)}
+      </Component>
+    );
+  };
   return (
     <div className="routelit-container">
-      <input
-        type="hidden"
-        name="componentStoreVersion"
-        value={componentStoreVersion}
-      />
       {componentsTree.map(renderComponentTree)}
     </div>
   );

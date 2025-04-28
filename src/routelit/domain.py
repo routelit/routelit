@@ -1,7 +1,7 @@
 from urllib.parse import urlparse
 from abc import ABC, abstractmethod
-from collections.abc import MutableMapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from collections import namedtuple
 from typing import (
     Any,
     Dict,
@@ -11,11 +11,17 @@ from typing import (
     Sequence,
     Tuple,
     TypedDict,
+    NamedTuple,
 )
 
-from routelit.exceptions import RerunException
 
 COOKIE_SESSION_KEY = "ROUTELIT_SESSION_ID"
+
+RerunType = Literal["auto", "app"]
+"""
+  "auto" will rerun the fragment if it is called from a fragment otherwise it will rerun the app.
+  "app" will rerun the app.
+"""
 
 
 class RouteLitEvent(TypedDict):
@@ -24,12 +30,28 @@ class RouteLitEvent(TypedDict):
     data: Dict[str, Any]
 
 
+class SessionKeys(NamedTuple):
+    ui_key: str
+    state_key: str
+    fragment_addresses_key: str
+    """
+      Key to the addresses of the fragments in the session state.
+      The address is a sequence of indices to the array tree of elements in the session state
+      from the root to the target element.
+    """
+    fragment_params_key: str
+    """
+      Key to the parameters of the fragments in the session state.
+    """
+
+
 @dataclass
 class RouteLitElement:
     name: str
     props: Dict[str, Any]
     key: str
     children: Optional[List["RouteLitElement"]] = None
+    address: Optional[Sequence[int]] = None
 
 
 @dataclass
@@ -61,7 +83,17 @@ class UpdateAction(Action):
     type: Literal["update"] = "update"
 
 
+@dataclass
+class ActionsResponse:
+    actions: List[Action]
+    target: Literal["app", "fragment"]
+
+
 class RouteLitRequest(ABC):
+    def __init__(self):
+        self._ui_event = self._get_ui_event()
+        self._fragment_id = self._get_fragment_id()
+
     @abstractmethod
     def get_headers(self) -> Dict[str, str]:
         pass
@@ -78,11 +110,21 @@ class RouteLitRequest(ABC):
     def get_json(self) -> Optional[Any]:
         pass
 
+    def _get_internal_referrer(self) -> Optional[str]:
+        return self.get_headers().get("X-Referer") or self.get_referrer()
+
     def _get_ui_event(self) -> Optional[RouteLitEvent]:
         if self.is_json():
-            return self.get_json().get("ui_event")
+            return self.get_json().get("uiEvent")
         else:
             return None
+
+    @property
+    def ui_event(self) -> Optional[RouteLitEvent]:
+        return self._ui_event
+
+    def clear_event(self):
+        self._ui_event = None
 
     @abstractmethod
     def get_query_param(self, key: str) -> Optional[str]:
@@ -109,31 +151,43 @@ class RouteLitRequest(ABC):
     def method(self) -> str:
         pass
 
-    @abstractmethod
-    def clear_event(self):
-        pass
+    def clear_fragment_id(self):
+        self._fragment_id = None
 
-    def get_fragment_id(self) -> str:
+    def _get_fragment_id(self) -> Optional[str]:
         if not self.is_json():
-            return ""
-        fragment_id = self.get_json().get("fragment_id") or ""
-        return fragment_id
+            return None
+        return self.get_json().get("fragmentId")
+
+    @property
+    def fragment_id(self) -> Optional[str]:
+        return self._fragment_id
 
     def get_host_pathname(self, use_referer: bool = False) -> str:
         if use_referer:
-            referrer = self.get_referrer()
-            url = urlparse(referrer)
-            if url.netloc and url.path:
-                return url.netloc + url.path
+            referrer = self._get_internal_referrer()
+            if referrer:
+                url = urlparse(referrer)
+                if url.netloc and url.path:
+                    return url.netloc + url.path
         return self.get_host() + self.get_pathname()
 
     def get_ui_session_keys(self, use_referer: bool = False) -> Tuple[str, str]:
         session_id = self.get_session_id()
         host_pathname = self.get_host_pathname(use_referer)
-        fragment_id = self.get_fragment_id()
-        ui_session_key = f"{session_id}:{host_pathname}:{fragment_id}"
+        # fragment_id = self.get_fragment_id()
+        ui_session_key = f"{session_id}:{host_pathname}"
         session_state_key = f"{session_id}:{host_pathname}:state"
         return ui_session_key, session_state_key
+
+    def get_session_keys(self, use_referer: bool = False) -> SessionKeys:
+        session_id = self.get_session_id()
+        host_pathname = self.get_host_pathname(use_referer)
+        ui_session_key = f"{session_id}:{host_pathname}:ui"
+        session_state_key = f"{session_id}:{host_pathname}:state"
+        fragment_addresses_key = f"{ui_session_key}:fragments"
+        fragment_params_key = f"{ui_session_key}:fragment_params"
+        return SessionKeys(ui_session_key, session_state_key, fragment_addresses_key, fragment_params_key)
 
 
 class AssetTarget(TypedDict):
@@ -146,190 +200,3 @@ class ViteComponentsAssets:
     package_name: str
     js_files: List[str]
     css_files: List[str]
-
-
-class RouteLitBuilder:
-    static_assets_targets: Sequence[AssetTarget] = []
-
-    def __init__(
-        self,
-        request: RouteLitRequest,
-        prefix: Optional[str] = None,
-        session_state: MutableMapping[str, Any] = {},
-        parent_element: Optional[RouteLitElement] = None,
-        parent_builder: Optional["RouteLitBuilder"] = None,
-    ):
-        self.request = request
-        # Set prefix based on parent element if not explicitly provided
-        if prefix is None:
-            self.prefix = parent_element.key if parent_element else ""
-        else:
-            self.prefix = prefix
-        self.elements: List[RouteLitElement] = []
-        self.num_non_widget = 0
-        self.session_state = session_state
-        self.parent_element = parent_element
-        self.parent_builder = parent_builder
-        if parent_element:
-            self.parent_element.children = self.elements
-        self.active_child_builder: Optional["RouteLitBuilder"] = None
-        if prefix is None:
-            self._on_init()
-
-    def _on_init(self):
-        pass
-
-    def get_request(self) -> RouteLitRequest:
-        return self.request
-
-    def _get_prefix(self) -> str:
-        # Simplify to just use the current prefix which is already properly initialized
-        return self.prefix
-
-    def _build_nested_builder(self, element: RouteLitElement) -> "RouteLitBuilder":
-        builder = self.__class__(
-            self.request,
-            prefix=element.key,
-            session_state=self.session_state,
-            parent_element=element,
-            parent_builder=self,
-        )
-        return builder
-
-    def _new_text_id(self, type: str) -> str:
-        no_of_non_widgets = (
-            self.num_non_widget if not self.active_child_builder else self.active_child_builder.num_non_widget
-        )
-        return f"{self._get_prefix()}_{type}_{no_of_non_widgets}"
-
-    def _new_widget_id(self, type: str, label: str) -> str:
-        return f"{self._get_prefix()}_{type}_{label}"
-
-    def _get_event_value(self, component_id: str, event_type: str, attribute: Optional[str] = None) -> Tuple[bool, Any]:
-        """
-        Check if the last event is of the given type and component_id.
-        If attribute is not None, check if the event has the given attribute.
-        Returns a tuple of (has_event, event_data).
-        """
-        event = self.request.get_ui_event()
-        has_event = event and event["type"] == event_type and event["component_id"] == component_id
-        if has_event:
-            if attribute is None:
-                return True, event["data"]
-            else:
-                return True, event["data"][attribute]
-        return False, None
-
-    def append_element(self, element: RouteLitElement) -> int:
-        """
-        Append an element to the current builder.
-        Returns the index of the element in the builder.
-        """
-        if self.active_child_builder:
-            return self.active_child_builder.append_element(element)
-        else:
-            self.elements.append(element)
-            return len(self.elements) - 1
-
-    def add_non_widget(self, element: RouteLitElement) -> RouteLitElement:
-        self.append_element(element)
-        if not self.active_child_builder:
-            self.num_non_widget += 1
-        else:
-            self.active_child_builder.num_non_widget += 1
-        return element
-
-    def add_widget(self, element: RouteLitElement):
-        self.append_element(element)
-
-    def create_element(
-        self,
-        name: str,
-        key: str,
-        props: Dict[str, Any],
-        children: List[RouteLitElement] = None,
-    ) -> RouteLitElement:
-        element = RouteLitElement(key=key, name=name, props=props, children=children)
-        self.add_widget(element)
-        return element
-
-    def _fragment(self, key: Optional[str] = None) -> "RouteLitBuilder":
-        key = key or self._new_text_id("fragment")
-        fragment = self.add_non_widget(RouteLitElement(key=key, name="fragment", props={"fragment_id": key}))
-        return self._build_nested_builder(fragment)
-
-    def link(
-        self,
-        href: str,
-        text: str = "",
-        replace: bool = False,
-        is_external: bool = False,
-        key: Optional[str] = None,
-        **kwargs,
-    ) -> RouteLitElement:
-        new_element = self.add_non_widget(
-            RouteLitElement(
-                key=key or self._new_text_id("link"),
-                name="link",
-                props={
-                    "href": href,
-                    "replace": replace,
-                    "is_external": is_external,
-                    "text": text,
-                    **kwargs,
-                },
-            )
-        )
-        return new_element
-
-    def link_area(
-        self,
-        href: str,
-        replace: bool = False,
-        is_external: bool = False,
-        key: Optional[str] = None,
-        className: Optional[str] = None,
-        **kwargs,
-    ) -> "RouteLitBuilder":
-        link_element = self.link(
-            href,
-            replace=replace,
-            is_external=is_external,
-            key=key,
-            className=f"no-link-decoration {className or ''}",
-            **kwargs,
-        )
-        return self._build_nested_builder(link_element)
-
-    def rerun(self, clear_event: bool = True):
-        self.elements.clear()
-        if clear_event:
-            self.request.clear_event()
-        raise RerunException(self.session_state)
-
-    def __enter__(self):
-        # When using with builder.element():
-        # Make parent builder redirect to this one
-        if self.parent_builder:
-            self._prev_active_child_builder = self.parent_builder.active_child_builder
-            self.parent_builder.active_child_builder = self
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        # Reset parent's active child when exiting context
-        if self.parent_builder:
-            if self._prev_active_child_builder:
-                self.parent_builder.active_child_builder = self._prev_active_child_builder
-                self._prev_active_child_builder = None
-            else:
-                self.parent_builder.active_child_builder = None
-
-    def __call__(self, *args: Any, **kwds: Any) -> Any:
-        return self
-
-    def get_elements(self) -> List[RouteLitElement]:
-        return self.elements
-
-    @classmethod
-    def get_client_resource_paths(cls) -> Sequence[AssetTarget]:
-        return cls.static_assets_targets

@@ -5,11 +5,13 @@ import { type RouteLitManager } from "./manager";
 type RouteLitContextType = {
   manager: RouteLitManager;
   componentStore: ComponentStore;
+  parentManager?: RouteLitManager;
 };
 
 export const RouteLitContext = createContext<RouteLitContextType>({
   manager: undefined as unknown as RouteLitManager,
   componentStore: undefined as unknown as ComponentStore,
+  parentManager: undefined as unknown as RouteLitManager,
 });
 
 export function useRouteLitContext() {

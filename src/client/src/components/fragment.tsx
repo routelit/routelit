@@ -4,15 +4,15 @@ import ReactRenderer from "../core/react-renderer";
 import { RouteLitManager } from "../core/manager";
 
 interface Props {
-  fragmentId?: string;
-  children: RouteLitComponent[];
+  id?: string;
+  address?: number[];
 }
 
-function Fragment({ fragmentId, children }: Props) {
-  const { componentStore } = useRouteLitContext();
+function Fragment({ id, address }: Props) {
+  const { componentStore, manager: parentManager } = useRouteLitContext();
   const manager = useMemo(
-    () => new RouteLitManager(children, fragmentId),
-    [children, fragmentId]
+    () => new RouteLitManager({ fragmentId: id, parentManager, address }),
+    [address, id, parentManager]
   );
   return (
     <RouteLitContext.Provider value={{ manager, componentStore }}>

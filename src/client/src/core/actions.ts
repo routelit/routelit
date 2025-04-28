@@ -40,6 +40,18 @@ export function applyUpdateAction(
   target[action.address[action.address.length - 1]].props = action.props;
 }
 
+export function prependAddressToActions(
+  actionResponse: ActionsResponse,
+  address: number[]
+): ActionsResponse {
+  return {
+    ...actionResponse,
+    actions: actionResponse.actions.map((action) => {
+      return { ...action, address: address.concat(action.address) };
+    }),
+  };
+}
+
 export function applyActions(
   componentsTree: RouteLitComponent[],
   actions: Action[]

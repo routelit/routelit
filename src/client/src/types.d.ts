@@ -4,6 +4,7 @@ interface RouteLitComponent {
     name: string;
     props: Record<string, any>;
     children?: RouteLitComponent[];
+    address?: number[];
 }
 
 type ActionType = "add" | "remove" | "update";
@@ -31,6 +32,11 @@ interface UpdateAction extends Action {
     props: Record<string, any>;
 }
 
+interface ActionsResponse {
+    actions: Action[];
+    target: "app" | "fragment";
+}
+
 interface UIEventPayload {
     type: string;
     id: string;
@@ -40,6 +46,7 @@ interface UIEventPayload {
 interface NavigateEventPayload extends UIEventPayload {
     type: "navigate";
     href: string;
+    lastURL?: string;
     isExternal?: boolean;
     replace?: boolean;
     target?: "_blank" | "_self";
