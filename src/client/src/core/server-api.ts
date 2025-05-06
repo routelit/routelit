@@ -8,12 +8,15 @@ export async function sendEvent(
   return await handleUIEvent(event, fragmentId);
 }
 
+interface UIEvent {
+  componentId: string;
+  type: string;
+  data: Record<string, unknown>;
+  formId?: string;
+}
+
 interface RequestBody {
-  uiEvent: {
-    componentId: string;
-    type: string;
-    data: Record<string, unknown>;
-  };
+  uiEvent: UIEvent;
   fragmentId?: string;
 }
 
@@ -34,13 +37,14 @@ async function sendUIEvent(url: string, body: RequestBody, headers?: Record<stri
 }
 
 async function handleUIEvent(event: CustomEvent<UIEventPayload>, fragmentId?: string) {
-  const { id, type, ...data } = event.detail;
+  const { id, type, formId, ...data } = event.detail;
   const url = new URL(window.location.href);
   const body: RequestBody = {
     uiEvent: {
       componentId: id,
       type,
       data,
+      formId,
     },
     fragmentId,
   };

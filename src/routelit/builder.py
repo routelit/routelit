@@ -1,11 +1,15 @@
-from collections.abc import MutableMapping, Sequence
-from typing import Any, Dict, List, Optional, Tuple, Literal
 import hashlib
+from collections.abc import MutableMapping, Sequence
+from typing import Any, Dict, List, Optional, Tuple
 
-
-from routelit.domain import AssetTarget, RouteLitElement, RouteLitRequest, RerunType
+from routelit.domain import (
+    AssetTarget,
+    RerunType,
+    RouteLitElement,
+    RouteLitEvent,
+    RouteLitRequest,
+)
 from routelit.exceptions import RerunException
-
 
 
 class RouteLitBuilder:
@@ -15,16 +19,16 @@ class RouteLitBuilder:
         self,
         request: RouteLitRequest,
         initial_fragment_id: Optional[str] = None,
-        fragments: MutableMapping[str, Sequence[int]] = {},
+        fragments: Optional[MutableMapping[str, Sequence[int]]] = None,
         prefix: Optional[str] = None,
-        session_state: MutableMapping[str, Any] = {},
+        session_state: Optional[MutableMapping[str, Any]] = None,
         parent_element: Optional[RouteLitElement] = None,
         parent_builder: Optional["RouteLitBuilder"] = None,
         address: Optional[Sequence[int]] = None,
     ):
         self.request = request
         self.initial_fragment_id = initial_fragment_id
-        self.fragments = fragments
+        self.fragments = fragments or {}
         self.address = address
         # Set prefix based on parent element if not explicitly provided
         if prefix is None:
@@ -34,13 +38,13 @@ class RouteLitBuilder:
         self.elements: List[RouteLitElement] = []
         # self.elements_no_fragments: List[RouteLitElement] = []
         self.num_non_widget = 0
-        self.session_state = session_state
+        self.session_state = session_state or {}
         self.parent_element = parent_element
         self.parent_builder = parent_builder
         if parent_element:
             self.parent_element.children = self.elements
-        self.active_child_builder: Optional["RouteLitBuilder"] = None
-        self._prev_active_child_builder: Optional["RouteLitBuilder"] = None
+        self.active_child_builder: Optional[RouteLitBuilder] = None
+        self._prev_active_child_builder: Optional[RouteLitBuilder] = None
         if prefix is None:
             self._on_init()
 
@@ -56,13 +60,19 @@ class RouteLitBuilder:
 
     def _get_next_address(self) -> Sequence[int]:
         if self.active_child_builder:
-            return [*(self.active_child_builder.address or []), len(self.active_child_builder.elements)]
+            return [
+                *(self.active_child_builder.address or []),
+                len(self.active_child_builder.elements),
+            ]
         else:
-            return [*(self.address or []), len(self.elements) - 1]
+            return [*(self.address or []), len(self.elements)]
 
     def _get_last_address(self) -> Sequence[int]:
         if self.active_child_builder:
-            return [*(self.active_child_builder.address or []), len(self.active_child_builder.elements) - 1]
+            return [
+                *(self.active_child_builder.address or []),
+                len(self.active_child_builder.elements) - 1,
+            ]
         else:
             return [*(self.address or []), len(self.elements) - 1]
 
@@ -78,17 +88,55 @@ class RouteLitBuilder:
         )
         return builder
 
-    def _new_text_id(self, type: str) -> str:
+    def _get_parent_form_id(self) -> Optional[str]:
+        if self.parent_element and self.parent_element.name == "form":
+            return self.parent_element.key
+        if self.active_child_builder:
+            return self.active_child_builder._get_parent_form_id()
+        if self._prev_active_child_builder:
+            return self._prev_active_child_builder._get_parent_form_id()
+        return None
+
+    def _new_text_id(self, name: str) -> str:
         no_of_non_widgets = (
             self.num_non_widget if not self.active_child_builder else self.active_child_builder.num_non_widget
         )
         prefix = self.active_child_builder._get_prefix() if self.active_child_builder else self._get_prefix()
-        return f"{prefix}_{type}_{no_of_non_widgets}"
+        return f"{prefix}_{name}_{no_of_non_widgets}"
 
-    def _new_widget_id(self, type: str, label: str) -> str:
+    def _new_widget_id(self, name: str, label: str) -> str:
         hashed = hashlib.sha256(label.encode()).hexdigest()[:8]
         prefix = self.active_child_builder._get_prefix() if self.active_child_builder else self._get_prefix()
-        return f"{prefix}_{type}_{hashed}"
+        return f"{prefix}_{name}_{hashed}"
+
+    def _maybe_get_event(self, component_id: str) -> Optional[RouteLitEvent]:
+        event = self.request.ui_event
+        if (
+            event
+            and event.get("type") == "submit"
+            and (event_form_id := event.get("formId"))
+            and self.session_state.get("__ignore_submit") != event_form_id
+            and (form_id := self._get_parent_form_id())
+            and event_form_id == form_id
+        ):
+            events = self.session_state.get(f"__events4later_{form_id}", {})
+            self.session_state.pop(f"__events4later_{form_id}", None)
+            self.session_state[f"__events_{form_id}"] = events
+            self.session_state["__ignore_submit"] = form_id
+            self.rerun(scope="app", clear_event=False)
+
+        if event and event.get("componentId") == component_id:
+            return event
+        if (
+            (form_id := self._get_parent_form_id())
+            and (events := self.session_state.get(f"__events_{form_id}", {}))
+            and component_id in events
+        ):
+            _event = events[component_id]
+            events.pop(component_id, None)
+            self.session_state[f"__events_{form_id}"] = events
+            return _event
+        return None
 
     def _get_event_value(self, component_id: str, event_type: str, attribute: Optional[str] = None) -> Tuple[bool, Any]:
         """
@@ -96,12 +144,8 @@ class RouteLitBuilder:
         If attribute is not None, check if the event has the given attribute.
         Returns a tuple of (has_event, event_data).
         """
-        event = self.request.ui_event
-        has_event = (
-            event
-            and event.get("type") == event_type
-            and event.get("componentId") == component_id
-        )
+        event = self._maybe_get_event(component_id)
+        has_event = event and event.get("type") == event_type
         if has_event:
             if attribute is None:
                 return True, event["data"]
@@ -136,17 +180,21 @@ class RouteLitBuilder:
         self,
         name: str,
         key: str,
-        props: Dict[str, Any] = {},
+        props: Optional[Dict[str, Any]] = None,
         children: Optional[List[RouteLitElement]] = None,
     ) -> RouteLitElement:
-        element = RouteLitElement(key=key, name=name, props=props, children=children)
+        element = RouteLitElement(key=key, name=name, props=props or {}, children=children)
         self.add_widget(element)
         return element
 
     def create_non_widget_element(
-        self, name: str, key: str, props: Dict[str, Any] = {}, address: Optional[Sequence[int]] = None
+        self,
+        name: str,
+        key: str,
+        props: Optional[Dict[str, Any]] = None,
+        address: Optional[Sequence[int]] = None,
     ) -> RouteLitElement:
-        element = RouteLitElement(key=key, name=name, props=props, address=address)
+        element = RouteLitElement(key=key, name=name, props=props or {}, address=address)
         self.add_non_widget(element)
         return element
 
@@ -159,6 +207,26 @@ class RouteLitBuilder:
             address=self._get_next_address(),
         )
         return self._build_nested_builder(fragment)
+
+    def _dialog(self, key: Optional[str] = None, closable: bool = True) -> "RouteLitBuilder":
+        key = key or self._new_text_id("dialog")
+        is_closed, _ = self._get_event_value(key, "close")
+        if is_closed:
+            self.rerun(scope="app")
+        dialog = self.create_non_widget_element(
+            name="dialog",
+            key=key,
+            props={"id": key, "open": True, "closable": closable},
+        )
+        return self._build_nested_builder(dialog)
+
+    def form(self, key: str) -> "RouteLitBuilder":
+        form = self.create_non_widget_element(
+            name="form",
+            key=key,
+            props={"id": key},
+        )
+        return self._build_nested_builder(form)
 
     def link(
         self,
@@ -236,6 +304,9 @@ class RouteLitBuilder:
 
     def get_fragments(self) -> MutableMapping[str, Sequence[int]]:
         return self.fragments
+
+    def on_end(self):
+        self.session_state.pop("__ignore_submit", None)
 
     @classmethod
     def get_client_resource_paths(cls) -> Sequence[AssetTarget]:

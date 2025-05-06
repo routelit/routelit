@@ -1,19 +1,17 @@
-from urllib.parse import urlparse
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
-from collections import namedtuple
 from typing import (
     Any,
     Dict,
     List,
     Literal,
+    NamedTuple,
     Optional,
-    Sequence,
     Tuple,
     TypedDict,
-    NamedTuple,
 )
-
+from urllib.parse import urlparse
 
 COOKIE_SESSION_KEY = "ROUTELIT_SESSION_ID"
 
@@ -26,8 +24,9 @@ RerunType = Literal["auto", "app"]
 
 class RouteLitEvent(TypedDict):
     type: Literal["click", "changed", "navigate"]
-    component_id: str
+    componentId: str
     data: Dict[str, Any]
+    formId: Optional[str] = None
 
 
 class SessionKeys(NamedTuple):

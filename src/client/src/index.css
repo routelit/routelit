@@ -25,3 +25,14 @@ body {
   text-decoration: none;
   color: inherit;
 }
+
+.close-button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background-color: transparent;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  color: inherit;
+}

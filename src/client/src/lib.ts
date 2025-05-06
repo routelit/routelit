@@ -6,37 +6,76 @@ import initManager from './core/initializer';
 import { ComponentStore } from './core/component-store';
 import Fragment from './components/fragment';
 import Link from './components/link';
-import { useDispatcherWith, useDispatcherWithAttr } from './core/context';
+import Dialog from './components/dialog';
+import Form from './components/form';
+import { useDispatcherWith, useDispatcherWithAttr, useFormDispatcherWithAttr, useFormDispatcher, useIsLoading, useError } from './core/context';
+import { RouteLitManager } from './core/manager';
 
-const manager = initManager("routelit-data");
-const componentStore = new ComponentStore();
-export {
-  useDispatcherWith,
-  manager,
-  componentStore,
-  useDispatcherWithAttr,
-};
+// Define the type for our client interface
+export interface RoutelitClientType {
+  manager: RouteLitManager;
+  componentStore: ComponentStore;
+  useDispatcherWith: typeof useDispatcherWith;
+  useDispatcherWithAttr: typeof useDispatcherWithAttr;
+  useFormDispatcherWithAttr: typeof useFormDispatcherWithAttr;
+  useFormDispatcher: typeof useFormDispatcher;
+  useIsLoading: typeof useIsLoading;
+  useError: typeof useError;
+}
 
-componentStore.register("fragment", Fragment);
-componentStore.register("link", Link);
-componentStore.forceUpdate();
+// Check if we already have an instance in the window object
+// This ensures we only ever have a single instance of these objects
+let manager: RouteLitManager;
+let componentStore: ComponentStore;
 
-const RoutelitClient = {
-  manager,
-  componentStore,
-  useDispatcherWith,
-  useDispatcherWithAttr,
-};
-
-// Extend Window interface
+// Add this to the window type
 declare global {
   interface Window {
     React: typeof React;
     ReactDOM: typeof ReactDOM;
     jsxRuntime: typeof jsxRuntime;
-    RoutelitClient: typeof RoutelitClient;
+    RoutelitClient?: RoutelitClientType;
+    componentStore?: ComponentStore;
   }
 }
+
+// Only create new instances if they don't already exist in the window
+if (window.RoutelitClient) {
+  manager = window.RoutelitClient.manager;
+  componentStore = window.RoutelitClient.componentStore;
+} else {
+  manager = initManager("routelit-data");
+  componentStore = new ComponentStore();
+
+  // Register components
+  componentStore.register("fragment", Fragment);
+  componentStore.register("link", Link);
+  componentStore.register("dialog", Dialog);
+  componentStore.register("form", Form);
+  componentStore.forceUpdate();
+}
+
+export {
+  useDispatcherWith,
+  manager,
+  componentStore,
+  useDispatcherWithAttr,
+  useIsLoading,
+  useError,
+  useFormDispatcherWithAttr,
+  useFormDispatcher,
+};
+
+const RoutelitClient: RoutelitClientType = {
+  manager,
+  componentStore,
+  useDispatcherWith,
+  useDispatcherWithAttr,
+  useIsLoading,
+  useError,
+  useFormDispatcherWithAttr,
+  useFormDispatcher,
+};
 
 // Expose them globally
 window.React = React;

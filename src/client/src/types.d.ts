@@ -28,7 +28,7 @@ interface RemoveAction extends Action {
 }
 
 interface UpdateAction extends Action {
-    type: "update"; 
+    type: "update";
     props: Record<string, any>;
 }
 
@@ -40,6 +40,7 @@ interface ActionsResponse {
 interface UIEventPayload {
     type: string;
     id: string;
+    formId?: string;
     [key: string]: any;
 }
 
@@ -55,4 +56,3 @@ interface NavigateEventPayload extends UIEventPayload {
 interface ChangeEventPayload extends UIEventPayload {
     value: string|number;
 }
-

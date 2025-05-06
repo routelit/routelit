@@ -99,6 +99,8 @@ ignore = [
     "E501",
     # DoNotAssignLambda
     "E731",
+    "UP006", # Ignore using List/Dict instead of list/dict
+    "UP035", # Ignore using List/Dict instead of list/dict
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -113,4 +115,3 @@ skip_empty = true
 [tool.coverage.run]
 branch = true
 source = ["src"]
-

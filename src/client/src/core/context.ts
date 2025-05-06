@@ -1,6 +1,7 @@
-import { createContext, useContext, useCallback } from "react";
+import { createContext, useContext, useCallback, useSyncExternalStore } from "react";
 import { type ComponentStore } from "./component-store";
 import { type RouteLitManager } from "./manager";
+import { useFormId } from "../components/form";
 
 type RouteLitContextType = {
   manager: RouteLitManager;
@@ -59,4 +60,38 @@ export function useDispatcherWithAttr(id: string, type: string, attr: string) {
     [manager, id, type, attr]
   );
   return callback;
+}
+
+export function useFormDispatcher(id: string, type: string) {
+  const { manager } = useRouteLitContext();
+  const formId = useFormId();
+  const callback = useCallback((data: Record<string, unknown>) => {
+    manager.handleEvent(new CustomEvent<UIEventPayload>("routelit:event", { detail: { id, type, formId, ...data } }));
+  }, [manager, id, type, formId]);
+  return callback;
+}
+
+export function useFormDispatcherWithAttr(id: string, type: string, attr: string) {
+  const { manager } = useRouteLitContext();
+  const formId = useFormId();
+  const callback = useCallback((value: unknown) => {
+    manager.handleEvent(new CustomEvent<UIEventPayload>("routelit:event", { detail: { id, type, formId, [attr]: value } }));
+  }, [manager, id, type, formId, attr]);
+  return callback;
+}
+
+export function useIsLoading(): boolean {
+  const { manager } = useRouteLitContext();
+  return useSyncExternalStore(
+    manager.subscribeIsLoading,
+    manager.isLoading,
+  );
+}
+
+export function useError(): Error | undefined {
+  const { manager } = useRouteLitContext();
+  return useSyncExternalStore(
+    manager.subscribeError,
+    manager.getError,
+  );
 }

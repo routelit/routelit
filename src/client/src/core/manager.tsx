@@ -1,7 +1,10 @@
 import { produce } from "immer";
 import { applyActions, prependAddressToActions } from "./actions";
 import { sendEvent } from "./server-api";
+
 type Handler = (args: RouteLitComponent[]) => void;
+type IsLoadingHandler = (args: boolean) => void;
+type ErrorHandler = (args: Error) => void;
 
 interface RouteLitManagerProps {
   componentsTree?: RouteLitComponent[];
@@ -12,7 +15,11 @@ interface RouteLitManagerProps {
 
 export class RouteLitManager {
   private listeners: Array<Handler> = [];
+  private isLoadingListeners: Array<IsLoadingHandler> = [];
+  private errorListeners: Array<ErrorHandler> = [];
   private componentsTree?: RouteLitComponent[];
+  private _isLoading: boolean = false;
+  private _error?: Error;
   private fragmentId?: string;
   private parentManager?: RouteLitManager;
   private address?: number[];
@@ -38,8 +45,21 @@ export class RouteLitManager {
       this.lastURL = e.detail.href.startsWith("http")
         ? e.detail.href
         : window.location.origin + e.detail.href;
-    sendEvent(e, this.fragmentId).then(this.applyActions, console.error);
+    this._error = undefined;
+    this._isLoading = true;
+    this.notifyIsLoading();
+    sendEvent(e, this.fragmentId)
+      .then(this.applyActions, this.handleError)
+      .finally(() => {
+        this._isLoading = false;
+        this.notifyIsLoading();
+      });
     e.stopPropagation();
+  };
+
+  handleError = (e: Error) => {
+    this._error = e;
+    this.notifyError();
   };
 
   applyActions = (actionsResp: ActionsResponse, shouldNotify = true) => {
@@ -53,6 +73,7 @@ export class RouteLitManager {
       if (shouldNotify && !shouldNotifyParent) this.notifyListeners();
       return;
     }
+    if (actionsResp.actions.length === 0) return;
     const componentsTreeCopy = produce(this.componentsTree!, (draft) => {
       applyActions(draft, actionsResp.actions);
     });
@@ -70,7 +91,6 @@ export class RouteLitManager {
 
   handlePopState = () => {
     const currentUrl = window.location.href;
-    console.log("handlePopState", this.fragmentId, currentUrl, this.lastURL);
     const navigateEvent = new CustomEvent<NavigateEventPayload>(
       "routelit:event",
       {
@@ -103,6 +123,14 @@ export class RouteLitManager {
     return this.componentsTree!;
   };
 
+  isLoading = (): boolean => {
+    return this.parentManager?.isLoading() || this._isLoading;
+  };
+
+  getError = (): Error | undefined => {
+    return this.parentManager?.getError() ?? this._error;
+  };
+
   getAtAddress = (address: number[]): RouteLitComponent[] => {
     const component = address.reduce(
       (acc, curr) =>
@@ -117,9 +145,31 @@ export class RouteLitManager {
   };
 
   subscribe = (listener: Handler): (() => void) => {
+    const unsubscribeParent = this.parentManager?.subscribe(listener);
     this.listeners.push(listener);
     return () => {
       this.listeners = this.listeners.filter((l) => l !== listener);
+      unsubscribeParent?.();
+    };
+  };
+
+  subscribeIsLoading = (listener: IsLoadingHandler): (() => void) => {
+    const unsubscribeParent = this.parentManager?.subscribeIsLoading(listener);
+    this.isLoadingListeners.push(listener);
+    return () => {
+      this.isLoadingListeners = this.isLoadingListeners.filter(
+        (l) => l !== listener
+      );
+      unsubscribeParent?.();
+    };
+  };
+
+  subscribeError = (listener: ErrorHandler): (() => void) => {
+    const unsubscribeParent = this.parentManager?.subscribeError(listener);
+    this.errorListeners.push(listener);
+    return () => {
+      this.errorListeners = this.errorListeners.filter((l) => l !== listener);
+      unsubscribeParent?.();
     };
   };
 
@@ -127,6 +177,20 @@ export class RouteLitManager {
     const componentsTree = this.getComponentsTree();
     for (const listener of this.listeners) {
       listener(componentsTree);
+    }
+  };
+
+  private notifyIsLoading = () => {
+    const isLoading = this.isLoading();
+    for (const listener of this.isLoadingListeners) {
+      listener(isLoading);
+    }
+  };
+
+  private notifyError = () => {
+    const error = this.getError();
+    for (const listener of this.errorListeners) {
+      listener(error!);
     }
   };
 }
