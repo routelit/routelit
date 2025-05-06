@@ -47,7 +47,7 @@ class RouteLit:
             return self.handle_post_request(view_fn, request, **kwargs)
         else:
             # set custom exception for unsupported request method
-            raise ValueError()
+            raise ValueError(request.method)
 
     def handle_get_request(self, view_fn: ViewFn, request: RouteLitRequest, **kwargs) -> List[Dict[str, Any]]:
         session_keys = request.get_session_keys()
@@ -63,6 +63,9 @@ class RouteLit:
         self.session_storage[ui_key] = elements
         self.session_storage[state_key] = builder.session_state
         self.session_storage[fragment_addresses_key] = builder.get_fragments()
+        # Initialize fragment_params_key to empty dict if not present
+        if fragment_params_key not in self.session_storage:
+            self.session_storage[fragment_params_key] = {}
         return [asdict(element) for element in elements]
 
     def _get_prev_keys(self, request: RouteLitRequest, session_keys: SessionKeys) -> Tuple[bool, SessionKeys]:
