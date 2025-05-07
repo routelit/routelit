@@ -41,10 +41,12 @@ export class RouteLitManager {
     if (e.detail.type === "navigate" && this.fragmentId)
       // Let the upper manager handle the navigation
       return;
-    if (e.detail.type === "navigate")
-      this.lastURL = e.detail.href.startsWith("http")
-        ? e.detail.href
-        : window.location.origin + e.detail.href;
+    if (e.detail.type === "navigate") {
+      const detail = e.detail as NavigateEventPayload;
+      this.lastURL = detail.href.startsWith("http")
+        ? detail.href
+        : window.location.origin + detail.href;
+    }
     this._error = undefined;
     this._isLoading = true;
     this.notifyIsLoading();

@@ -15,7 +15,7 @@ export function useFormId(): string | undefined {
 function Form({ id, children }: FormProps) {
   return (
     <FormContext.Provider value={{ id }}>
-      <form id={id}>{children}</form>
+      <form id={id} data-testid={id}>{children}</form>
     </FormContext.Provider>
   );
 }

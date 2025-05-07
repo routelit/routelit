@@ -1,8 +1,11 @@
 
 interface RouteLitComponent {
     key: string;
+    /**
+     * The name or type of the component. It could be a html tag name or a custom component name.
+     */
     name: string;
-    props: Record<string, any>;
+    props: Record<string, unknown>;
     children?: RouteLitComponent[];
     address?: number[];
 }
@@ -29,7 +32,7 @@ interface RemoveAction extends Action {
 
 interface UpdateAction extends Action {
     type: "update";
-    props: Record<string, any>;
+    props: Record<string, unknown>;
 }
 
 interface ActionsResponse {
@@ -41,7 +44,7 @@ interface UIEventPayload {
     type: string;
     id: string;
     formId?: string;
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 interface NavigateEventPayload extends UIEventPayload {

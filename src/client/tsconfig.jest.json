@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "moduleResolution": "NodeNext",
+    "noImplicitAny": false,
+    "types": [
+      "jest",
+      "node",
+      "@testing-library/jest-dom"
+    ]
+  },
+  "extends": "./tsconfig.json"
+}
