@@ -251,8 +251,8 @@ class RouteLit:
             def wrapper(rl: RouteLitBuilder, *args, **kwargs):
                 args, kwargs = self._preprocess_fragment_params(rl, fragment_key, args, kwargs)
 
-                with rl._fragment(fragment_key) as rl2, rl2._dialog(dialog_key) as rl3:
-                    res = view_fn(rl3, *args, **kwargs)
+                with rl._fragment(fragment_key), rl._dialog(dialog_key):
+                    res = view_fn(rl, *args, **kwargs)
                     return res
 
             self._register_fragment(fragment_key, wrapper)

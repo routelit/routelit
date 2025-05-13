@@ -1413,3 +1413,172 @@ class TestRouteLit:
         nested_keys = [child["key"] for child in expander["children"]]
         assert "exp-text" in nested_keys
         assert "exp-button" in nested_keys
+
+    def test_increment_button(self, routelit):
+        """Test button that increments a counter in state and displays it via text"""
+        # Initial GET request to render the counter
+        request_get = MockRequest()
+
+        def counter_view(builder, **kwargs):
+            # Get current counter value from session state, default to 0
+            counter = builder.session_state.get("counter", 0)
+
+            # Create increment button
+            if builder.button("Increment", key="increment-btn"):
+                # Increment counter when clicked
+                builder.session_state["counter"] = counter + 1
+
+            # Display counter value
+            builder.text(f"Counter: {counter}", key="counter-display")
+
+        # Render initial view
+        result = routelit.handle_get_request(counter_view, request_get)
+
+        # Verify initial render has button and counter display with value 0
+        assert len(result) == 2
+        assert result[0]["name"] == "button"
+        assert result[0]["key"] == "increment-btn"
+        assert result[0]["props"]["label"] == "Increment"
+        assert result[1]["name"] == "text"
+        assert result[1]["key"] == "counter-display"
+        assert result[1]["props"]["text"] == "Counter: 0"
+
+        # Simulate button click
+        click_event = {"type": "click", "component_id": "increment-btn", "data": {}}
+        request_post = MockRequest(method="POST", ui_event=click_event)
+
+        with patch("routelit.routelit.compare_elements") as mock_compare:
+            # Mock the expected actions from the button click
+            mock_compare.return_value = [
+                RemoveAction(address=[1], key="counter-display"),
+                AddAction(
+                    address=[1],
+                    element=RouteLitElement(name="text", props={"text": "Counter: 1"}, key="counter-display"),
+                    key="counter-display",
+                ),
+            ]
+
+            # Handle the POST request with button click
+            result = routelit.handle_post_request(counter_view, request_post)
+
+            # Verify the actions update the counter display to show incremented value
+            assert isinstance(result, dict)
+            assert "actions" in result
+            assert len(result["actions"]) == 2
+            assert result["actions"][0]["type"] == "remove"
+            assert result["actions"][1]["type"] == "add"
+            assert result["actions"][1]["element"]["props"]["text"] == "Counter: 1"
+
+    def test_button_showing_counter_dialog(self, routelit):
+        """Test a button that shows a dialog with counter functionality"""
+
+        # Define a dialog with counter functionality
+        @routelit.dialog("counter_dialog")
+        def counter_dialog(builder):
+            # Get counter value from session state, default to 0
+            counter = builder.session_state.get("dialog_counter", 0)
+
+            # Add title and counter display
+            builder.text("Dialog Counter", key="dialog-title")
+            builder.text(f"Current count: {counter}", key="dialog-counter-display")
+
+            # Add increment button
+            if builder.button("Increment Counter", key="dialog-increment-btn"):
+                # Update counter in session state
+                builder.session_state["dialog_counter"] = counter + 1
+                # builder.rerun()
+
+        # Main view with button to show dialog
+        def main_view(builder):
+            builder.text("Main Content", key="main-content")
+            # The dialog should only appear when this button is clicked
+            show_dialog = builder.button("Show Counter Dialog", key="show-dialog-btn")
+
+            # Only call the dialog function when the button was clicked
+            if show_dialog:
+                counter_dialog(builder)
+
+        # Initial render - dialog should NOT be present
+        request_get = MockRequest()
+        initial_result = routelit.handle_get_request(main_view, request_get)
+
+        # Verify initial state has ONLY main content and dialog button (no dialog)
+        assert len(initial_result) == 2
+        assert initial_result[0]["key"] == "main-content"
+        assert initial_result[1]["key"] == "show-dialog-btn"
+
+        # Simulate clicking the show dialog button
+        show_dialog_event = {"type": "click", "component_id": "show-dialog-btn", "data": {}}
+        show_dialog_request = MockRequest(method="POST", ui_event=show_dialog_event)
+
+        with patch("routelit.routelit.compare_elements") as mock_compare:
+            # Mock the actions to add the dialog to the UI after button click
+            mock_compare.return_value = [
+                AddAction(
+                    address=[2],
+                    element=RouteLitElement(
+                        name="fragment",
+                        props={},
+                        key="counter_dialog",
+                        children=[
+                            RouteLitElement(
+                                name="dialog",
+                                props={},
+                                key="counter_dialog-dialog",
+                                children=[
+                                    RouteLitElement(name="text", props={"text": "Dialog Counter"}, key="dialog-title"),
+                                    RouteLitElement(
+                                        name="text", props={"text": "Current count: 0"}, key="dialog-counter-display"
+                                    ),
+                                    RouteLitElement(
+                                        name="button", props={"label": "Increment Counter"}, key="dialog-increment-btn"
+                                    ),
+                                ],
+                            )
+                        ],
+                    ),
+                    key="counter_dialog",
+                )
+            ]
+
+            # Handle the POST request to show dialog
+            dialog_result = routelit.handle_post_request(main_view, show_dialog_request)
+
+            # Verify dialog is added AFTER button click
+            assert isinstance(dialog_result, dict)
+            assert "actions" in dialog_result
+            assert len(dialog_result["actions"]) == 1
+            assert dialog_result["actions"][0]["type"] == "add"
+            assert dialog_result["actions"][0]["key"] == "counter_dialog"
+
+        # Now simulate clicking the increment button inside the dialog
+        dialog_increment_event = {"type": "click", "component_id": "counter_dialog_dialog-increment-btn", "data": {}}
+        dialog_increment_request = MockRequest(
+            method="POST", fragment_id="counter_dialog", ui_event=dialog_increment_event
+        )
+
+        with patch("routelit.routelit.compare_elements") as mock_compare:
+            # Mock the actions to update the counter display
+            mock_compare.return_value = [
+                RemoveAction(address=[1], key="dialog-counter-display"),
+                AddAction(
+                    address=[1],
+                    element=RouteLitElement(
+                        name="text", props={"text": "Current count: 1"}, key="dialog-counter-display"
+                    ),
+                    key="dialog-counter-display",
+                ),
+            ]
+
+            # Handle the POST request for dialog increment
+            increment_result = routelit.handle_post_request(main_view, dialog_increment_request)
+
+            # Verify the actions update the counter display
+            assert isinstance(increment_result, dict)
+            assert "actions" in increment_result
+            assert "target" in increment_result
+            assert len(increment_result["actions"]) == 2
+            assert increment_result["actions"][0]["type"] == "remove"
+            assert increment_result["actions"][1]["type"] == "add"
+            assert increment_result["actions"][1]["element"]["props"]["text"] == "Current count: 1"
+            assert increment_result["target"] == "fragment"
