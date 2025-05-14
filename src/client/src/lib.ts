@@ -1,15 +1,23 @@
-import React from 'react';
-import * as ReactDOM from 'react-dom';
-import * as jsxRuntime from 'react/jsx-runtime';
+import React from "react";
+import * as ReactDOM from "react-dom";
+import * as jsxRuntime from "react/jsx-runtime";
 
-import initManager from './core/initializer';
-import { ComponentStore } from './core/component-store';
-import Fragment from './components/fragment';
-import Link from './components/link';
-import Dialog from './components/dialog';
-import Form from './components/form';
-import { useDispatcherWith, useDispatcherWithAttr, useFormDispatcherWithAttr, useFormDispatcher, useIsLoading, useError } from './core/context';
-import { RouteLitManager } from './core/manager';
+import initManager from "./core/initializer";
+import { ComponentStore } from "./core/component-store";
+import Fragment from "./components/fragment";
+import Link from "./components/link";
+import Dialog from "./components/dialog";
+import Form from "./components/form";
+import Head from "./components/head";
+import {
+  useDispatcherWith,
+  useDispatcherWithAttr,
+  useFormDispatcherWithAttr,
+  useFormDispatcher,
+  useIsLoading,
+  useError,
+} from "./core/context";
+import { RouteLitManager } from "./core/manager";
 
 // Define the type for our client interface
 export interface RoutelitClientType {
@@ -52,6 +60,7 @@ if (window.RoutelitClient) {
   componentStore.register("link", Link);
   componentStore.register("dialog", Dialog);
   componentStore.register("form", Form);
+  componentStore.register("head", Head);
   componentStore.forceUpdate();
 }
 

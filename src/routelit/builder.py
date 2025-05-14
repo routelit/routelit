@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from routelit.domain import (
     AssetTarget,
+    Head,
     RerunType,
     RouteLitElement,
     RouteLitEvent,
@@ -30,6 +31,7 @@ class RouteLitBuilder:
         self.initial_fragment_id = initial_fragment_id
         self.fragments = fragments or {}
         self.address = address
+        self.head = Head()
         # Set prefix based on parent element if not explicitly provided
         if prefix is None:
             self.prefix = parent_element.key if parent_element else ""
@@ -276,6 +278,21 @@ class RouteLitBuilder:
         if scope == "app":
             self.request.clear_fragment_id()
         raise RerunException(self.session_state, scope=scope)
+
+    def get_head(self) -> Head:
+        return self.head
+
+    def set_page_config(self, page_title: str | None = None, page_description: str | None = None):
+        self.head = Head(title=page_title, description=page_description)
+        new_element = self.create_non_widget_element(
+            name="head",
+            key="__head__",
+            props={
+                "title": page_title,
+                "description": page_description,
+            },
+        )
+        return new_element
 
     def __enter__(self):
         # When using with builder.element():

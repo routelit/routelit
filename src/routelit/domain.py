@@ -1,6 +1,7 @@
+import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import (
     Any,
     Dict,
@@ -186,7 +187,12 @@ class RouteLitRequest(ABC):
         session_state_key = f"{session_id}:{host_pathname}:state"
         fragment_addresses_key = f"{ui_session_key}:fragments"
         fragment_params_key = f"{ui_session_key}:fragment_params"
-        return SessionKeys(ui_session_key, session_state_key, fragment_addresses_key, fragment_params_key)
+        return SessionKeys(
+            ui_session_key,
+            session_state_key,
+            fragment_addresses_key,
+            fragment_params_key,
+        )
 
 
 class AssetTarget(TypedDict):
@@ -199,3 +205,18 @@ class ViteComponentsAssets:
     package_name: str
     js_files: List[str]
     css_files: List[str]
+
+
+@dataclass
+class Head:
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+
+@dataclass
+class RouteLitResponse:
+    elements: List[RouteLitElement]
+    head: Head
+
+    def get_str_json_elements(self) -> str:
+        return json.dumps([asdict(element) for element in self.elements])

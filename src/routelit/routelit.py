@@ -19,6 +19,7 @@ from .domain import (
     ActionsResponse,
     RouteLitElement,
     RouteLitRequest,
+    RouteLitResponse,
     SessionKeys,
     ViteComponentsAssets,
 )
@@ -49,7 +50,7 @@ class RouteLit:
             # set custom exception for unsupported request method
             raise ValueError(request.method)
 
-    def handle_get_request(self, view_fn: ViewFn, request: RouteLitRequest, **kwargs) -> List[Dict[str, Any]]:
+    def handle_get_request(self, view_fn: ViewFn, request: RouteLitRequest, **kwargs) -> RouteLitResponse:
         session_keys = request.get_session_keys()
         ui_key, state_key, fragment_addresses_key, fragment_params_key = session_keys
         if state_key in self.session_storage:
@@ -66,7 +67,10 @@ class RouteLit:
         # Initialize fragment_params_key to empty dict if not present
         if fragment_params_key not in self.session_storage:
             self.session_storage[fragment_params_key] = {}
-        return [asdict(element) for element in elements]
+        return RouteLitResponse(
+            elements=elements,
+            head=builder.get_head(),
+        )
 
     def _get_prev_keys(self, request: RouteLitRequest, session_keys: SessionKeys) -> Tuple[bool, SessionKeys]:
         maybe_event = request.ui_event
