@@ -1,6 +1,5 @@
 import { render, screen } from '@testing-library/react';
 import Form, { useFormId } from '../../components/form';
-import React from 'react';
 
 // Create a test component that uses the useFormId hook
 const TestComponent = () => {

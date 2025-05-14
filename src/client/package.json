@@ -35,7 +35,7 @@
   "private": true,
   "scripts": {
     "build": "tsc -b && vite build",
-    "build:lib": "BUILD_TARGET=lib vite build && tsc -b",
+    "build:lib": "tsc -b && NODE_OPTIONS='--experimental-global-webcrypto' BUILD_TARGET=lib vite build",
     "coverage": "jest --coverage",
     "dev": "vite",
     "lint": "eslint .",

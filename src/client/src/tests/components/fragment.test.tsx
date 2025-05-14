@@ -10,7 +10,7 @@ jest.mock('../../core/context', () => {
 
   return {
     RouteLitContext: {
-      Provider: ({ children, value }: { children: React.ReactNode, value: any }) => {
+      Provider: ({ children }: { children: React.ReactNode }) => {
         return <div data-testid="context-provider">{children}</div>;
       },
     },
@@ -33,22 +33,6 @@ jest.mock('../../core/manager', () => {
 });
 
 describe('Fragment Component', () => {
-  const mockComponentStore = {
-    subscribe: jest.fn(),
-    getVersion: jest.fn(),
-    get: jest.fn(),
-    register: jest.fn(),
-    unregister: jest.fn(),
-    forceUpdate: jest.fn()
-  };
-
-  const mockParentManager = {
-    initialize: jest.fn(),
-    terminate: jest.fn(),
-    subscribe: jest.fn(),
-    getComponentsTree: jest.fn()
-  };
-
   beforeEach(() => {
     jest.clearAllMocks();
     (RouteLitManager as jest.Mock).mockImplementation(() => ({

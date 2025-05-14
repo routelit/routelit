@@ -24,7 +24,7 @@ function ReactRenderer({ manager, componentStore }: Props) {
     if (c.name === "fragment") {
       const { id, ...props } = c.props;
       return (
-        <Fragment key={c.key} id={id} address={c.address} {...props} />
+        <Fragment key={c.key} id={id as string} address={c.address} {...props} />
       );
     }
 
