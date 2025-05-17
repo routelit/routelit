@@ -15,7 +15,6 @@ from typing import (
 from .assets_utils import get_vite_components_assets
 from .builder import RouteLitBuilder
 from .domain import (
-    Action,
     ActionsResponse,
     RouteLitElement,
     RouteLitRequest,
@@ -39,9 +38,7 @@ class RouteLit:
         self.session_storage = session_storage or {}
         self.fragment_registry: Dict[str, Callable[[RouteLitBuilder], Any]] = {}
 
-    def response(
-        self, view_fn: ViewFn, request: RouteLitRequest, **kwargs
-    ) -> Union[List[RouteLitElement], List[Action]]:
+    def response(self, view_fn: ViewFn, request: RouteLitRequest, **kwargs) -> Union[RouteLitResponse, Dict[str, Any]]:
         if request.method == "GET":
             return self.handle_get_request(view_fn, request, **kwargs)
         elif request.method == "POST":

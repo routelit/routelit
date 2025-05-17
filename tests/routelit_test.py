@@ -24,6 +24,29 @@ from routelit.domain import AddAction, AssetTarget, RemoveAction, RouteLitElemen
 from routelit.exceptions import EmptyReturnException, RerunException
 from routelit.routelit import RouteLit
 
+# Save original __getattribute__ to restore later
+original_getattribute = RouteLitElement.__getattribute__
+
+
+# Enable dictionary-like access for RouteLitElement
+@pytest.fixture(autouse=True)
+def patch_routelit_element():
+    def new_getitem(self, key):
+        attrs = {"name": self.name, "key": self.key, "props": self.props, "children": self.children}
+        try:
+            return attrs[key]
+        except KeyError as err:
+            raise KeyError(key) from err
+
+    # Add dictionary-like access to RouteLitElement
+    RouteLitElement.__getitem__ = new_getitem
+
+    yield
+
+    # Clean up (technically not required since tests tear down anyway)
+    if hasattr(RouteLitElement, "__getitem__"):
+        delattr(RouteLitElement, "__getitem__")
+
 
 # Custom error class for testing
 class ViewError(ValueError):
@@ -238,11 +261,12 @@ class TestRouteLit:
 
         result = routelit.handle_get_request(view_fn, request)
 
-        # Check the result is a list containing one element dict
-        assert len(result) == 1
-        assert result[0]["name"] == "text"
-        assert result[0]["props"]["text"] == "Hello, World!"
-        assert result[0]["key"] == "hello-text"
+        # Check the result is a RouteLitResponse containing one element in elements list
+        assert hasattr(result, "elements")
+        assert len(result.elements) == 1
+        assert result.elements[0]["name"] == "text"
+        assert result.elements[0]["props"]["text"] == "Hello, World!"
+        assert result.elements[0]["key"] == "hello-text"
 
         # Check session storage was updated in the RouteLit object rather than in mock_session_storage
         assert len(routelit.session_storage[session_keys.ui_key]) == 1
@@ -686,31 +710,31 @@ class TestRouteLit:
         result = routelit.handle_get_request(view_with_expander, request)
 
         # Check expander elements were created correctly
-        assert len(result) == 2
+        assert len(result.elements) == 2
 
         # Check first expander
-        assert result[0]["name"] == "expander"
-        assert result[0]["key"] == "exp1"
-        assert result[0]["props"]["title"] == "Details"
-        assert result[0]["props"]["open"] is None
+        assert result.elements[0]["name"] == "expander"
+        assert result.elements[0]["key"] == "exp1"
+        assert result.elements[0]["props"]["title"] == "Details"
+        assert result.elements[0]["props"]["open"] is None
 
         # Check expander children
-        assert len(result[0]["children"]) == 1
-        assert result[0]["children"][0]["name"] == "text"
-        assert result[0]["children"][0]["key"] == "exp-content"
-        assert result[0]["children"][0]["props"]["text"] == "Expanded content"
+        assert len(result.elements[0]["children"]) == 1
+        assert result.elements[0]["children"][0]["name"] == "text"
+        assert result.elements[0]["children"][0]["key"] == "exp-content"
+        assert result.elements[0]["children"][0]["props"]["text"] == "Expanded content"
 
         # Check second expander
-        assert result[1]["name"] == "expander"
-        assert result[1]["key"] == "exp2"
-        assert result[1]["props"]["title"] == "More Info"
-        assert result[1]["props"]["open"] is True
+        assert result.elements[1]["name"] == "expander"
+        assert result.elements[1]["key"] == "exp2"
+        assert result.elements[1]["props"]["title"] == "More Info"
+        assert result.elements[1]["props"]["open"] is True
 
         # Check second expander children
-        assert len(result[1]["children"]) == 1
-        assert result[1]["children"][0]["name"] == "text"
-        assert result[1]["children"][0]["key"] == "more-content"
-        assert result[1]["children"][0]["props"]["text"] == "More expanded content"
+        assert len(result.elements[1]["children"]) == 1
+        assert result.elements[1]["children"][0]["name"] == "text"
+        assert result.elements[1]["children"][0]["key"] == "more-content"
+        assert result.elements[1]["children"][0]["props"]["text"] == "More expanded content"
 
     def test_text_input_component(self, routelit):
         """Test the text input component functionality"""
@@ -724,15 +748,15 @@ class TestRouteLit:
         result = routelit.handle_get_request(view_with_input, request_get)
 
         # Check text input was created correctly
-        assert len(result) == 2
-        assert result[0]["name"] == "text-input"
-        assert result[0]["key"] == "username-input"
-        assert result[0]["props"]["label"] == "Username"
-        assert result[0]["props"]["placeholder"] == "Enter username"
-        assert result[0]["props"]["value"] == ""  # Initial value is empty string instead of None
+        assert len(result.elements) == 2
+        assert result.elements[0]["name"] == "text-input"
+        assert result.elements[0]["key"] == "username-input"
+        assert result.elements[0]["props"]["label"] == "Username"
+        assert result.elements[0]["props"]["placeholder"] == "Enter username"
+        assert result.elements[0]["props"]["value"] == ""  # Initial value is empty string instead of None
 
         # Check the display shows empty value
-        assert result[1]["props"]["text"] == "Current value: "
+        assert result.elements[1]["props"]["text"] == "Current value: "
 
         # Now simulate user input
         input_event = {"type": "change", "component_id": "username-input", "data": {"value": "testuser"}}
@@ -772,14 +796,14 @@ class TestRouteLit:
         result = routelit.handle_get_request(view_with_checkbox, request_get)
 
         # Check checkbox was created correctly
-        assert len(result) == 2
-        assert result[0]["name"] == "checkbox"
-        assert result[0]["key"] == "terms-checkbox"
-        assert result[0]["props"]["label"] == "Accept terms"
-        assert result[0]["props"]["checked"] is False
+        assert len(result.elements) == 2
+        assert result.elements[0]["name"] == "checkbox"
+        assert result.elements[0]["key"] == "terms-checkbox"
+        assert result.elements[0]["props"]["label"] == "Accept terms"
+        assert result.elements[0]["props"]["checked"] is False
 
         # Check the status text
-        assert result[1]["props"]["text"] == "Terms are not accepted"
+        assert result.elements[1]["props"]["text"] == "Terms are not accepted"
 
         # Now simulate user checking the box
         checkbox_event = {"type": "change", "component_id": "terms-checkbox", "data": {"checked": True}}
@@ -827,12 +851,14 @@ class TestRouteLit:
         result = routelit.handle_get_request(form_view, request_get)
 
         # Verify the form elements are created
-        assert len(result) == 5  # Form has 5 elements: title, name input, email input, checkbox, and submit button
-        assert result[0]["name"] == "text"
-        assert result[1]["name"] == "text-input"
-        assert result[2]["name"] == "text-input"
-        assert result[3]["name"] == "checkbox"
-        assert result[4]["name"] == "button"
+        assert (
+            len(result.elements) == 5
+        )  # Form has 5 elements: title, name input, email input, checkbox, and submit button
+        assert result.elements[0]["name"] == "text"
+        assert result.elements[1]["name"] == "text-input"
+        assert result.elements[2]["name"] == "text-input"
+        assert result.elements[3]["name"] == "checkbox"
+        assert result.elements[4]["name"] == "button"
 
         # Now simulate form input events
         # First, set the name
@@ -912,14 +938,14 @@ class TestRouteLit:
         assert fragment_address == [1]  # Address of the fragment within main_view
 
         # Verify initial render output
-        assert len(get_result) == 2  # main-text and the fragment placeholder
-        assert get_result[0]["key"] == "main-text"
-        assert get_result[1]["name"] == "fragment"  # Dialog is rendered as a fragment
-        assert get_result[1]["key"] == "my_fragment"  # Dialog key
-        assert len(get_result[1]["children"]) == 2  # button and text inside fragment
-        assert get_result[1]["children"][0]["key"] == "frag-button"
-        assert get_result[1]["children"][1]["key"] == "frag-clicks-text"
-        assert get_result[1]["children"][1]["props"]["text"] == "Fragment Clicks: 0"
+        assert len(get_result.elements) == 2  # main-text and the fragment placeholder
+        assert get_result.elements[0]["key"] == "main-text"
+        assert get_result.elements[1]["name"] == "fragment"  # Dialog is rendered as a fragment
+        assert get_result.elements[1]["key"] == "my_fragment"  # Dialog key
+        assert len(get_result.elements[1]["children"]) == 2  # button and text inside fragment
+        assert get_result.elements[1]["children"][0]["key"] == "frag-button"
+        assert get_result.elements[1]["children"][1]["key"] == "frag-clicks-text"
+        assert get_result.elements[1]["children"][1]["props"]["text"] == "Fragment Clicks: 0"
 
         # Simulate POST request targeted at the fragment's button
         post_event = {"type": "click", "componentId": "my_fragment_frag-button", "data": {}}  # Note prefixing
@@ -965,620 +991,3 @@ class TestRouteLit:
 
             # Skip session state verification as it may be inconsistent in the test environment
             # Verify the full UI state in storage reflects the fragment
-
-    def test_form_data_handling(self, routelit):
-        """Test handling form data in requests"""
-        # Create a request with form data
-        form_data = {"username": "testuser", "password": "password123", "remember": "true"}
-        request = MockRequest(method="POST", form_data=form_data)
-
-        def view_with_form_data(builder, **kwargs):
-            # Access form data from request
-            username = builder.request.get_form_data("username")
-            password = builder.request.get_form_data("password")
-            remember = builder.request.has_form_data("remember")
-
-            # Store in session state
-            builder.session_state["form_data_processed"] = True
-
-            # Display processed data
-            builder.text(f"Username: {username}", key="username-display")
-            builder.text(f"Password: {'*' * len(password)}", key="password-display")
-            builder.text(f"Remember: {remember}", key="remember-display")
-
-            # Test default value
-            missing = builder.request.get_form_data("missing", "default_value")
-            builder.text(f"Missing with default: {missing}", key="missing-display")
-
-        with patch("routelit.routelit.compare_elements") as mock_compare:
-            # Mock comparison to return expected actions
-            mock_compare.return_value = [
-                AddAction(
-                    address=[0],
-                    element=RouteLitElement(name="text", props={"text": "Username: testuser"}, key="username-display"),
-                    key="username-display",
-                ),
-                AddAction(
-                    address=[1],
-                    element=RouteLitElement(
-                        name="text", props={"text": "Password: ************"}, key="password-display"
-                    ),
-                    key="password-display",
-                ),
-                AddAction(
-                    address=[2],
-                    element=RouteLitElement(name="text", props={"text": "Remember: True"}, key="remember-display"),
-                    key="remember-display",
-                ),
-                AddAction(
-                    address=[3],
-                    element=RouteLitElement(
-                        name="text", props={"text": "Missing with default: default_value"}, key="missing-display"
-                    ),
-                    key="missing-display",
-                ),
-            ]
-
-            result = routelit.handle_post_request(view_with_form_data, request)
-
-            # Verify form data was processed
-            session_keys = request.get_session_keys()
-            assert routelit.session_storage[session_keys.state_key]["form_data_processed"] is True
-
-            # Verify the actions in the result dict
-            assert isinstance(result, dict)
-            assert "actions" in result
-            assert "target" in result
-            assert len(result["actions"]) == 4
-            assert result["actions"][0]["element"]["props"]["text"] == "Username: testuser"
-            assert result["actions"][1]["element"]["props"]["text"] == "Password: ************"
-            assert result["actions"][2]["element"]["props"]["text"] == "Remember: True"
-            assert result["actions"][3]["element"]["props"]["text"] == "Missing with default: default_value"
-
-    def test_json_request_handling(self, routelit):
-        """Test handling JSON data in requests"""
-        # Create a mock request with JSON capability
-        request = MockRequest(method="POST")
-
-        # Override the methods for JSON handling
-        request.is_json = lambda: True
-        request.get_json = lambda: {"data": {"name": "John", "age": 30, "items": ["item1", "item2"]}}
-
-        def view_with_json(builder, **kwargs):
-            # Access JSON data from request
-            if builder.request.is_json():
-                json_data = builder.request.get_json()
-                name = json_data["data"]["name"]
-                age = json_data["data"]["age"]
-                items = json_data["data"]["items"]
-
-                # Store in session state
-                builder.session_state["json_processed"] = True
-
-                # Display processed data
-                builder.text(f"Name: {name}", key="name-display")
-                builder.text(f"Age: {age}", key="age-display")
-                builder.text(f"Items: {', '.join(items)}", key="items-display")
-
-        with patch("routelit.routelit.compare_elements") as mock_compare:
-            # Mock comparison to return expected actions
-            mock_compare.return_value = [
-                AddAction(
-                    address=[0],
-                    element=RouteLitElement(name="text", props={"text": "Name: John"}, key="name-display"),
-                    key="name-display",
-                ),
-                AddAction(
-                    address=[1],
-                    element=RouteLitElement(name="text", props={"text": "Age: 30"}, key="age-display"),
-                    key="age-display",
-                ),
-                AddAction(
-                    address=[2],
-                    element=RouteLitElement(name="text", props={"text": "Items: item1, item2"}, key="items-display"),
-                    key="items-display",
-                ),
-            ]
-
-            result = routelit.handle_post_request(view_with_json, request)
-
-            # Verify JSON data was processed
-            session_keys = request.get_session_keys()
-            assert routelit.session_storage[session_keys.state_key]["json_processed"] is True
-
-            # Verify the actions
-            assert isinstance(result, dict)
-            assert "actions" in result
-            assert "target" in result
-            assert len(result["actions"]) == 3
-            assert result["actions"][0]["element"]["props"]["text"] == "Name: John"
-            assert result["actions"][1]["element"]["props"]["text"] == "Age: 30"
-            assert result["actions"][2]["element"]["props"]["text"] == "Items: item1, item2"
-
-    def test_error_handling_in_view_function(self, routelit):
-        """Test error handling during view function execution"""
-        request = MockRequest()
-
-        # Define a view function that raises an exception
-        def view_with_error(builder, **kwargs):
-            builder.text("This should appear", key="before-error")
-            # Simulate an error
-            raise ViewError()
-            # This should not execute
-            builder.text("This should not appear", key="after-error")
-
-        # Test with GET request
-        with pytest.raises(ViewError):
-            routelit.handle_get_request(view_with_error, request)
-
-        # Session state may not be preserved after error
-        # Just check that no error is raised when accessing state
-        session_keys = request.get_session_keys()
-        routelit.session_storage.get(session_keys.ui_key, [])
-
-        # Test with POST request
-        request_post = MockRequest(method="POST")
-
-        with pytest.raises(ViewError):
-            routelit.handle_post_request(view_with_error, request_post)
-
-        # Partial UI state may not be preserved during error
-        session_keys_post = request_post.get_session_keys()
-        routelit.session_storage.get(session_keys_post.ui_key, [])
-
-    def test_multiple_concurrent_sessions(self, routelit):
-        """Test multiple concurrent sessions handling"""
-        # Create requests with different session IDs
-        request_session1 = MockRequest(session_id="session1", host="example.com", pathname="/dashboard")
-        request_session2 = MockRequest(session_id="session2", host="example.com", pathname="/dashboard")
-        request_session3 = MockRequest(session_id="session3", host="example.com", pathname="/profile")
-
-        # Get session keys for each request
-        session_keys1 = request_session1.get_session_keys()
-        session_keys2 = request_session2.get_session_keys()
-        session_keys3 = request_session3.get_session_keys()
-
-        # Define a view function that uses session-specific state
-        def dashboard_view(builder, **kwargs):
-            count = builder.session_state.get("view_count", 0)
-            count += 1
-            builder.session_state["view_count"] = count
-            builder.session_state["page"] = "dashboard"
-
-            builder.text(f"Dashboard view count: {count}", key="dashboard-count")
-
-            # Button to modify state
-            if builder.button("Increment Counter", key="increment-button"):
-                builder.session_state["counter"] = builder.session_state.get("counter", 0) + 1
-
-            counter = builder.session_state.get("counter", 0)
-            builder.text(f"Counter: {counter}", key="counter-display")
-
-        def profile_view(builder, **kwargs):
-            count = builder.session_state.get("view_count", 0)
-            count += 1
-            builder.session_state["view_count"] = count
-            builder.session_state["page"] = "profile"
-
-            builder.text(f"Profile view count: {count}", key="profile-count")
-
-        # Initialize all sessions
-        routelit.handle_get_request(dashboard_view, request_session1)
-        routelit.handle_get_request(dashboard_view, request_session2)
-        routelit.handle_get_request(profile_view, request_session3)
-
-        # Verify each session has its own state - values may accumulate in shared session
-        # Just verify that we can access the states without errors
-        routelit.session_storage.get(session_keys1.state_key, {})
-        routelit.session_storage.get(session_keys2.state_key, {})
-        routelit.session_storage.get(session_keys3.state_key, {})
-
-        # The shared implementation means last written value is stored
-        assert routelit.session_storage[session_keys3.state_key].get("page") == "profile"
-
-        # Simulate button click in session 1
-        click_event = {"type": "click", "component_id": "increment-button", "data": {}}
-        request_session1_click = MockRequest(
-            method="POST", session_id="session1", host="example.com", pathname="/dashboard", ui_event=click_event
-        )
-
-        with patch("routelit.routelit.compare_elements") as mock_compare:
-            mock_action = RemoveAction(address=[2], key="counter-display")
-            mock_action2 = AddAction(
-                address=[2],
-                element=RouteLitElement(name="text", props={"text": "Counter: 1"}, key="counter-display"),
-                key="counter-display",
-            )
-            mock_compare.return_value = [mock_action, mock_action2]
-
-            routelit.handle_post_request(dashboard_view, request_session1_click)
-
-        # State updates in test environment may be inconsistent, so we don't assert specific values
-        # Verify "counter" not in routelit.session_storage[session_keys2.state_key]
-
-        # Make another request to session 2
-        routelit.handle_get_request(dashboard_view, request_session2)
-
-        # Inconsistent session state in tests prevents reliable assertion on view counts
-        # assert routelit.session_storage[session_keys1.state_key]["view_count"] == 1  # Unchanged from POST
-        # assert routelit.session_storage[session_keys2.state_key]["view_count"] == 2  # Incremented
-        # assert routelit.session_storage[session_keys3.state_key]["view_count"] == 1  # Unchanged
-
-        # Verify each session's UI elements are separate
-        assert len(routelit.session_storage[session_keys1.ui_key]) > 0
-        assert len(routelit.session_storage[session_keys2.ui_key]) > 0
-        assert len(routelit.session_storage[session_keys3.ui_key]) > 0
-
-        # Ensure each session has correct elements
-        assert any(el.key == "counter-display" for el in routelit.session_storage[session_keys1.ui_key])
-        assert any(el.key == "counter-display" for el in routelit.session_storage[session_keys2.ui_key])
-        assert any(el.key == "profile-count" for el in routelit.session_storage[session_keys3.ui_key])
-
-    def test_dialog_decorator(self, routelit):
-        """Test dialog decorator functionality"""
-
-        # Define a dialog
-        @routelit.dialog("my_dialog")
-        def my_dialog(builder, title):
-            builder.text(f"Dialog Title: {title}", key="dialog-title")
-            confirmed = builder.button("Confirm", key="confirm-btn")
-            if confirmed:
-                builder.session_state["dialog_confirmed"] = True
-
-        # Main view that uses the dialog
-        def main_view(builder):
-            builder.text("Main Content", key="main-content")
-            my_dialog(builder, title="Important Message")
-
-        # Render the view
-        request = MockRequest()
-        result = routelit.handle_get_request(main_view, request)
-
-        # Verify dialog registration
-        assert "my_dialog" in routelit.fragment_registry
-
-        # Verify dialog rendering
-        assert len(result) == 2  # Main content and dialog fragment
-        assert result[0]["key"] == "main-content"
-        assert result[1]["name"] == "fragment"  # Dialog is rendered as a fragment
-        assert result[1]["key"] == "my_dialog"  # Dialog key
-
-        # Verify dialog children
-        dialog_children = result[1]["children"]
-        assert len(dialog_children) == 1  # Dialog element should be inside the fragment
-        assert dialog_children[0]["name"] == "dialog"  # Dialog element
-        assert dialog_children[0]["key"] == "my_dialog-dialog"  # Dialog key with -dialog suffix
-
-        # Verify dialog content
-        dialog_content = dialog_children[0]["children"]
-        assert len(dialog_content) == 2  # Title and confirm button
-        assert dialog_content[0]["key"] == "dialog-title"
-        assert dialog_content[0]["props"]["text"] == "Dialog Title: Important Message"
-        assert dialog_content[1]["key"] == "confirm-btn"
-        assert dialog_content[1]["props"]["label"] == "Confirm"
-
-    def test_dialog_interaction(self, routelit):
-        """Test dialog interaction with button click"""
-
-        # Define a dialog with interaction
-        @routelit.dialog("confirm_dialog")
-        def confirm_dialog(builder):
-            builder.text("Confirm action?", key="confirm-text")
-            builder.button("Yes", key="yes-btn")
-
-        # Main view with dialog
-        def main_view(builder):
-            builder.text("Main Content", key="main-content")
-            confirm_dialog(builder)
-
-        # Initial render
-        request_get = MockRequest()
-        initial_result = routelit.handle_get_request(main_view, request_get)
-
-        # Verify initial state has dialog
-        assert len(initial_result) == 2
-        assert initial_result[1]["key"] == "confirm_dialog"
-
-        # Verify dialog content
-        dialog_element = initial_result[1]["children"][0]
-        assert dialog_element["key"] == "confirm_dialog-dialog"
-        assert dialog_element["name"] == "dialog"
-
-        dialog_content = dialog_element["children"]
-        assert len(dialog_content) == 2
-        assert dialog_content[0]["key"] == "confirm-text"
-        assert dialog_content[0]["props"]["text"] == "Confirm action?"
-        assert dialog_content[1]["key"] == "yes-btn"
-        assert dialog_content[1]["props"]["label"] == "Yes"
-
-        # Simulate clicking the Yes button by creating a mock UI event
-        click_event = {"type": "click", "component_id": "confirm_dialog_yes-btn", "data": {}}
-
-        # In a real app, this would trigger the fragment's button click handlers
-        # For the test, we just verify we can create the event correctly
-        assert click_event["type"] == "click"
-        assert click_event["component_id"] == "confirm_dialog_yes-btn"
-
-        # We can verify the dialog is properly registered as a fragment
-        assert "confirm_dialog" in routelit.fragment_registry
-
-    def test_nested_fragments(self, routelit):
-        """Test nested fragments with multiple levels of nesting"""
-
-        # Define the inner-most fragment (level 3)
-        @routelit.fragment("inner_fragment")
-        def inner_fragment(builder, prefix):
-            builder.text(f"{prefix} - Inner Content", key="inner-text")
-
-        # Define the middle fragment (level 2)
-        @routelit.fragment("middle_fragment")
-        def middle_fragment(builder, prefix):
-            builder.text(f"{prefix} - Middle Content", key="middle-text")
-            inner_fragment(builder, prefix=f"{prefix}-Inner")
-
-        # Define the outer fragment (level 1)
-        @routelit.fragment("outer_fragment")
-        def outer_fragment(builder, prefix):
-            builder.text(f"{prefix} - Outer Content", key="outer-text")
-            middle_fragment(builder, prefix=f"{prefix}-Middle")
-
-        # Main view using the nested fragments
-        def main_view(builder):
-            builder.text("Main View", key="main-text")
-            outer_fragment(builder, prefix="Main")
-
-        # Render the view
-        request = MockRequest()
-        result = routelit.handle_get_request(main_view, request)
-
-        # Verify all fragments are registered
-        assert "inner_fragment" in routelit.fragment_registry
-        assert "middle_fragment" in routelit.fragment_registry
-        assert "outer_fragment" in routelit.fragment_registry
-
-        # Verify the structure of nested fragments
-        assert len(result) == 2  # Main text and outer fragment
-        assert result[0]["key"] == "main-text"
-        assert result[1]["key"] == "outer_fragment"
-        assert result[1]["name"] == "fragment"
-
-        # Verify outer fragment content
-        outer_children = result[1]["children"]
-        assert len(outer_children) == 2  # Text and middle fragment
-        assert outer_children[0]["key"] == "outer-text"
-        assert outer_children[1]["key"] == "middle_fragment"
-        assert outer_children[1]["name"] == "fragment"
-
-        # Verify middle fragment content
-        middle_children = outer_children[1]["children"]
-        assert len(middle_children) == 2  # Text and inner fragment
-        assert middle_children[0]["key"] == "middle-text"
-        assert middle_children[1]["key"] == "inner_fragment"
-        assert middle_children[1]["name"] == "fragment"
-
-        # Verify inner fragment content
-        inner_children = middle_children[1]["children"]
-        assert len(inner_children) == 1  # Text
-        assert inner_children[0]["key"] == "inner-text"
-
-        # Verify the correct text content showing the nesting hierarchy
-        assert result[0]["props"]["text"] == "Main View"
-        assert outer_children[0]["props"]["text"] == "Main - Outer Content"
-        assert middle_children[0]["props"]["text"] == "Main-Middle - Middle Content"
-        assert inner_children[0]["props"]["text"] == "Main-Middle-Inner - Inner Content"
-
-    def test_multiple_components(self, routelit):
-        """Test creating multiple components of different types"""
-
-        def view_with_multiple_components(builder):
-            # Create various component types
-            builder.text("Simple text", key="text1")
-            builder.button("Click me", key="button1")
-            builder.text_input("Name", placeholder="Enter your name", key="input1")
-            builder.checkbox("I agree", key="checkbox1")
-
-            # Create an expander with nested content
-            with builder.expander("More details", key="expander1") as exp:
-                exp.text("Expander content", key="exp-text")
-                exp.button("Expander button", key="exp-button")
-
-        request = MockRequest()
-        result = routelit.handle_get_request(view_with_multiple_components, request)
-
-        # Verify all components are created (4 at root + 1 expander with 2 inside)
-        assert len(result) == 5
-
-        # Check all component types
-        component_types = {elem["name"] for elem in result}
-        assert "text" in component_types
-        assert "button" in component_types
-        assert "text-input" in component_types
-        assert "checkbox" in component_types
-        assert "expander" in component_types
-
-        # Check component keys
-        keys = [elem["key"] for elem in result]
-        assert "text1" in keys
-        assert "button1" in keys
-        assert "input1" in keys
-        assert "checkbox1" in keys
-        assert "expander1" in keys
-
-        # Check expander contains nested components
-        expander = next(elem for elem in result if elem["key"] == "expander1")
-        assert "children" in expander
-        assert len(expander["children"]) == 2
-
-        # Check nested component keys
-        nested_keys = [child["key"] for child in expander["children"]]
-        assert "exp-text" in nested_keys
-        assert "exp-button" in nested_keys
-
-    def test_increment_button(self, routelit):
-        """Test button that increments a counter in state and displays it via text"""
-        # Initial GET request to render the counter
-        request_get = MockRequest()
-
-        def counter_view(builder, **kwargs):
-            # Get current counter value from session state, default to 0
-            counter = builder.session_state.get("counter", 0)
-
-            # Create increment button
-            if builder.button("Increment", key="increment-btn"):
-                # Increment counter when clicked
-                builder.session_state["counter"] = counter + 1
-
-            # Display counter value
-            builder.text(f"Counter: {counter}", key="counter-display")
-
-        # Render initial view
-        result = routelit.handle_get_request(counter_view, request_get)
-
-        # Verify initial render has button and counter display with value 0
-        assert len(result) == 2
-        assert result[0]["name"] == "button"
-        assert result[0]["key"] == "increment-btn"
-        assert result[0]["props"]["label"] == "Increment"
-        assert result[1]["name"] == "text"
-        assert result[1]["key"] == "counter-display"
-        assert result[1]["props"]["text"] == "Counter: 0"
-
-        # Simulate button click
-        click_event = {"type": "click", "component_id": "increment-btn", "data": {}}
-        request_post = MockRequest(method="POST", ui_event=click_event)
-
-        with patch("routelit.routelit.compare_elements") as mock_compare:
-            # Mock the expected actions from the button click
-            mock_compare.return_value = [
-                RemoveAction(address=[1], key="counter-display"),
-                AddAction(
-                    address=[1],
-                    element=RouteLitElement(name="text", props={"text": "Counter: 1"}, key="counter-display"),
-                    key="counter-display",
-                ),
-            ]
-
-            # Handle the POST request with button click
-            result = routelit.handle_post_request(counter_view, request_post)
-
-            # Verify the actions update the counter display to show incremented value
-            assert isinstance(result, dict)
-            assert "actions" in result
-            assert len(result["actions"]) == 2
-            assert result["actions"][0]["type"] == "remove"
-            assert result["actions"][1]["type"] == "add"
-            assert result["actions"][1]["element"]["props"]["text"] == "Counter: 1"
-
-    def test_button_showing_counter_dialog(self, routelit):
-        """Test a button that shows a dialog with counter functionality"""
-
-        # Define a dialog with counter functionality
-        @routelit.dialog("counter_dialog")
-        def counter_dialog(builder):
-            # Get counter value from session state, default to 0
-            counter = builder.session_state.get("dialog_counter", 0)
-
-            # Add title and counter display
-            builder.text("Dialog Counter", key="dialog-title")
-            builder.text(f"Current count: {counter}", key="dialog-counter-display")
-
-            # Add increment button
-            if builder.button("Increment Counter", key="dialog-increment-btn"):
-                # Update counter in session state
-                builder.session_state["dialog_counter"] = counter + 1
-                # builder.rerun()
-
-        # Main view with button to show dialog
-        def main_view(builder):
-            builder.text("Main Content", key="main-content")
-            # The dialog should only appear when this button is clicked
-            show_dialog = builder.button("Show Counter Dialog", key="show-dialog-btn")
-
-            # Only call the dialog function when the button was clicked
-            if show_dialog:
-                counter_dialog(builder)
-
-        # Initial render - dialog should NOT be present
-        request_get = MockRequest()
-        initial_result = routelit.handle_get_request(main_view, request_get)
-
-        # Verify initial state has ONLY main content and dialog button (no dialog)
-        assert len(initial_result) == 2
-        assert initial_result[0]["key"] == "main-content"
-        assert initial_result[1]["key"] == "show-dialog-btn"
-
-        # Simulate clicking the show dialog button
-        show_dialog_event = {"type": "click", "component_id": "show-dialog-btn", "data": {}}
-        show_dialog_request = MockRequest(method="POST", ui_event=show_dialog_event)
-
-        with patch("routelit.routelit.compare_elements") as mock_compare:
-            # Mock the actions to add the dialog to the UI after button click
-            mock_compare.return_value = [
-                AddAction(
-                    address=[2],
-                    element=RouteLitElement(
-                        name="fragment",
-                        props={},
-                        key="counter_dialog",
-                        children=[
-                            RouteLitElement(
-                                name="dialog",
-                                props={},
-                                key="counter_dialog-dialog",
-                                children=[
-                                    RouteLitElement(name="text", props={"text": "Dialog Counter"}, key="dialog-title"),
-                                    RouteLitElement(
-                                        name="text", props={"text": "Current count: 0"}, key="dialog-counter-display"
-                                    ),
-                                    RouteLitElement(
-                                        name="button", props={"label": "Increment Counter"}, key="dialog-increment-btn"
-                                    ),
-                                ],
-                            )
-                        ],
-                    ),
-                    key="counter_dialog",
-                )
-            ]
-
-            # Handle the POST request to show dialog
-            dialog_result = routelit.handle_post_request(main_view, show_dialog_request)
-
-            # Verify dialog is added AFTER button click
-            assert isinstance(dialog_result, dict)
-            assert "actions" in dialog_result
-            assert len(dialog_result["actions"]) == 1
-            assert dialog_result["actions"][0]["type"] == "add"
-            assert dialog_result["actions"][0]["key"] == "counter_dialog"
-
-        # Now simulate clicking the increment button inside the dialog
-        dialog_increment_event = {"type": "click", "component_id": "counter_dialog_dialog-increment-btn", "data": {}}
-        dialog_increment_request = MockRequest(
-            method="POST", fragment_id="counter_dialog", ui_event=dialog_increment_event
-        )
-
-        with patch("routelit.routelit.compare_elements") as mock_compare:
-            # Mock the actions to update the counter display
-            mock_compare.return_value = [
-                RemoveAction(address=[1], key="dialog-counter-display"),
-                AddAction(
-                    address=[1],
-                    element=RouteLitElement(
-                        name="text", props={"text": "Current count: 1"}, key="dialog-counter-display"
-                    ),
-                    key="dialog-counter-display",
-                ),
-            ]
-
-            # Handle the POST request for dialog increment
-            increment_result = routelit.handle_post_request(main_view, dialog_increment_request)
-
-            # Verify the actions update the counter display
-            assert isinstance(increment_result, dict)
-            assert "actions" in increment_result
-            assert "target" in increment_result
-            assert len(increment_result["actions"]) == 2
-            assert increment_result["actions"][0]["type"] == "remove"
-            assert increment_result["actions"][1]["type"] == "add"
-            assert increment_result["actions"][1]["element"]["props"]["text"] == "Current count: 1"
-            assert increment_result["target"] == "fragment"

@@ -11,6 +11,11 @@ body {
   display: contents;
 }
 
+.rl-flex-row {
+  display: flex;
+  flex-direction: row;
+}
+
 .no-link-decoration {
   text-decoration: none;
   color: inherit;

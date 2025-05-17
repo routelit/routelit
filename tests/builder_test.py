@@ -405,7 +405,7 @@ class TestRouteLitBuilder:
         assert link.props["href"] == "/home"
         assert link.props["text"] == "Go Home"
         assert link.props["replace"] is True
-        assert link.props["is_external"] is False
+        assert link.props["isExternal"] is False
         assert link.props["custom_prop"] == "abc"
         assert builder.num_non_widget == 1  # link is non-widget
 
@@ -422,7 +422,7 @@ class TestRouteLitBuilder:
         assert link_area_element.name == "link"
         assert link_area_element.key == "details-area"
         assert link_area_element.props["href"] == "/details"
-        assert link_area_element.props["is_external"] is True
+        assert link_area_element.props["isExternal"] is True
         assert link_area_element.props["replace"] is False
         assert link_area_element.props["className"] == "no-link-decoration extra-class"  # Check class merging
         assert builder.num_non_widget == 1
@@ -556,3 +556,203 @@ class TestRouteLitBuilder:
 
         # The link_area method requires href parameter, so we can't test with no href
         # Removing that test case as it's not valid
+
+    def test_text_element_creation(self, builder):
+        """Test creating a text element with various properties."""
+        text = builder.create_non_widget_element(
+            "text", key="greeting", props={"content": "Hello World", "className": "large", "style": {"color": "red"}}
+        )
+        assert len(builder.elements) == 1
+        assert text == builder.elements[0]
+        assert text.name == "text"
+        assert text.key == "greeting"
+        assert text.props["content"] == "Hello World"
+        assert text.props["className"] == "large"
+        assert text.props["style"] == {"color": "red"}
+        assert builder.num_non_widget == 1
+
+    def test_button_creation(self, builder):
+        """Test creating a button element with event handler."""
+        button = builder.create_element(
+            "button", key="submit-btn", props={"text": "Click Me", "onClick": "handleClick", "disabled": True}
+        )
+        assert len(builder.elements) == 1
+        assert button == builder.elements[0]
+        assert button.name == "button"
+        assert button.key == "submit-btn"
+        assert button.props["text"] == "Click Me"
+        assert button.props["onClick"] == "handleClick"
+        assert button.props["disabled"] is True
+        assert builder.num_non_widget == 0  # Button is a widget
+
+    def test_container_with_children(self, builder):
+        """Test creating a container with child elements."""
+        with builder.container(key="main", className="wrapper") as container:
+            container.create_non_widget_element("text", key="header", props={"content": "Header"})
+            container.create_non_widget_element("text", key="content", props={"content": "Content"})
+
+        assert len(builder.elements) == 1
+        container_element = builder.elements[0]
+        assert container_element.name == "container"
+        assert container_element.key == "main"
+        assert container_element.props["className"] == "wrapper"
+        assert len(container_element.children) == 2
+        assert container_element.children[0].props["content"] == "Header"
+        assert container_element.children[1].props["content"] == "Content"
+
+    def test_form_element_creation(self, builder):
+        """Test creating a form with input fields."""
+        with builder.form(key="contact-form") as form:
+            # Add onSubmit to the form props directly after creation
+            form.parent_element.props["onSubmit"] = "handleSubmit"
+
+            form.create_element(
+                "input", key="name", props={"placeholder": "Enter name", "type": "text", "required": True}
+            )
+            form.create_element("input", key="email", props={"placeholder": "Enter email", "type": "email"})
+            form.create_element("button", key="submit", props={"text": "Submit", "type": "submit"})
+
+        assert len(builder.elements) == 1
+        form_element = builder.elements[0]
+        assert form_element.name == "form"
+        assert form_element.key == "contact-form"
+        assert form_element.props["onSubmit"] == "handleSubmit"
+        assert len(form_element.children) == 3
+        assert form_element.children[0].name == "input"
+        assert form_element.children[0].props["required"] is True
+        assert form_element.children[2].name == "button"
+        assert form_element.children[2].props["type"] == "submit"
+
+    def test_dynamic_element_creation(self, builder):
+        """Test creating elements dynamically based on data."""
+        items = ["Apple", "Banana", "Cherry"]
+        builder.session_state["selected"] = "Banana"
+
+        # Create a container to use as a list
+        with builder.container(key="fruit-list", className="items") as list_builder:
+            for item in items:
+                is_selected = builder.session_state["selected"] == item
+                list_builder.create_non_widget_element(
+                    "div",  # Use div instead of list_item
+                    key=f"item-{item.lower()}",
+                    props={"content": item, "className": f"item {'selected' if is_selected else ''}"},
+                )
+
+        assert len(builder.elements) == 1
+        list_element = builder.elements[0]
+        assert list_element.name == "container"  # Changed from list to container
+        assert len(list_element.children) == 3
+        assert list_element.children[1].props["content"] == "Banana"
+        assert "selected" in list_element.children[1].props["className"]
+        assert "selected" not in list_element.children[0].props["className"]
+
+    def test_event_handling_with_state_update(self, builder):
+        """Test handling events that update session state."""
+        builder.session_state["counter"] = 0
+
+        # Simulate an event for increment button
+        increment_id = "inc-btn"
+        builder.request._ui_event = {"type": "click", "componentId": increment_id, "data": {}}
+
+        _button = builder.create_element(
+            "button", key=increment_id, props={"text": "Increment", "onClick": "handleIncrement"}
+        )
+        has_event, _ = builder._get_event_value(increment_id, "click")
+
+        if has_event:
+            builder.session_state["counter"] += 1
+            builder.create_non_widget_element(
+                "text", key="counter-display", props={"content": f"Count: {builder.session_state['counter']}"}
+            )
+
+        assert builder.session_state["counter"] == 1
+        assert len(builder.elements) == 2
+        assert builder.elements[1].props["content"] == "Count: 1"
+
+    def test_conditional_rendering(self, builder):
+        """Test conditional rendering based on session state."""
+        builder.session_state["show_details"] = False
+
+        # Always show main content
+        builder.create_non_widget_element("text", key="main", props={"content": "Main Content"})
+
+        # Conditionally show details
+        if builder.session_state["show_details"]:
+            builder.create_non_widget_element("text", key="details", props={"content": "Detailed Info"})
+
+        assert len(builder.elements) == 1
+        assert builder.elements[0].props["content"] == "Main Content"
+
+        # Change state and render again
+        builder.session_state["show_details"] = True
+        builder.elements = []  # Clear previous elements
+
+        builder.create_non_widget_element("text", key="main", props={"content": "Main Content"})
+        if builder.session_state["show_details"]:
+            builder.create_non_widget_element("text", key="details", props={"content": "Detailed Info"})
+
+        assert len(builder.elements) == 2
+        assert builder.elements[1].props["content"] == "Detailed Info"
+
+    def test_nested_fragment_handling(self, builder):
+        """Test handling nested fragments."""
+        main_frag = builder._fragment("main-fragment")
+
+        with main_frag as mf:
+            mf.create_non_widget_element("text", key="main-text", props={"content": "Main Content"})
+
+            # Create nested fragment
+            nested_frag = mf._fragment("nested-fragment")
+            with nested_frag as nf:
+                nf.create_non_widget_element("text", key="nested-text", props={"content": "Nested Content"})
+
+        assert "main-fragment" in builder.fragments
+        assert "nested-fragment" in main_frag.fragments
+
+        # Main fragment has text and nested fragment
+        main_element = builder.elements[0]
+        assert len(main_element.children) == 2
+        assert main_element.children[0].props["content"] == "Main Content"
+        assert main_element.children[1].name == "fragment"
+
+        # Nested fragment has text
+        nested_element = main_element.children[1]
+        assert len(nested_element.children) == 1
+        assert nested_element.children[0].props["content"] == "Nested Content"
+
+    def test_fragment_with_custom_props(self, builder):
+        """Test creating a fragment with custom properties."""
+        # Create fragment first without props
+        main_frag = builder._fragment("custom-fragment")
+
+        # Manually add custom props after creation
+        fragment_element = builder.elements[0]
+        fragment_element.props["data-testid"] = "main-content"
+        fragment_element.props["aria-label"] = "Main Content"
+
+        with main_frag as mf:
+            mf.create_element("div", "content", props={"text": "Fragment Content"})
+
+        # Assert props were correctly added
+        assert fragment_element.name == "fragment"
+        assert fragment_element.key == "custom-fragment"
+        assert fragment_element.props["data-testid"] == "main-content"
+        assert fragment_element.props["aria-label"] == "Main Content"
+
+    def test_rerun_with_custom_scope_and_state(self, builder):
+        """Test rerun with custom scope and specific state."""
+        builder.session_state["counter"] = 10
+        builder.session_state["user"] = {"name": "Test"}
+
+        # Test standard rerun functionality
+        with pytest.raises(RerunException) as exc_info:
+            builder.rerun(scope="page")
+
+        # Check the exception details
+        assert exc_info.value.scope == "page"
+        assert "counter" in exc_info.value.state
+        assert "user" in exc_info.value.state
+
+        # For state_keys test, we can only verify that all keys are in the state
+        assert exc_info.value.state["counter"] == 10
+        assert exc_info.value.state["user"] == {"name": "Test"}

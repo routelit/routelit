@@ -1,5 +1,5 @@
 interface LinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
-  is_external?: boolean;
+  isExternal?: boolean;
   text?: string;
   replace?: boolean;
 }
@@ -13,7 +13,7 @@ interface UINavigateEvent {
 
 function Link({ text, children, id, href, replace, ...props }: LinkProps) {
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (props.is_external) {
+    if (props.isExternal) {
       return;
     }
     e.preventDefault();

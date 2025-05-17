@@ -5,15 +5,16 @@ function Dialog({
   children,
   closable = true,
   open = true,
+  ...props
 }: {
   id: string;
   children: React.ReactNode;
   closable?: boolean;
   open?: boolean;
-}) {
+} & React.HTMLAttributes<HTMLDialogElement>) {
   const onClose = useDispatcherWith(id, "close");
   return (
-    <dialog open={open}>
+    <dialog open={open} {...props}>
       {closable && (
         <button className="close-button" onClick={() => onClose({})}>
           &times;

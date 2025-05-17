@@ -9,6 +9,9 @@ import Link from "./components/link";
 import Dialog from "./components/dialog";
 import Form from "./components/form";
 import Head from "./components/head";
+import Container from "./components/container";
+import Markdown from "./components/markdown";
+import Image from "./components/image";
 import {
   useDispatcherWith,
   useDispatcherWithAttr,
@@ -61,6 +64,9 @@ if (window.RoutelitClient) {
   componentStore.register("dialog", Dialog);
   componentStore.register("form", Form);
   componentStore.register("head", Head);
+  componentStore.register("container", Container);
+  componentStore.register("markdown", Markdown);
+  componentStore.register("image", Image);
   componentStore.forceUpdate();
 }
 

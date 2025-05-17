@@ -49,7 +49,7 @@ describe('Link Component', () => {
     const dispatchEventSpy = jest.spyOn(document, 'dispatchEvent');
 
     render(
-      <Link href="https://example.com" is_external={true} id="external-link">
+      <Link href="https://example.com" isExternal={true} id="external-link">
         External Link
       </Link>
     );

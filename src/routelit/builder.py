@@ -1,6 +1,6 @@
 import hashlib
 from collections.abc import MutableMapping, Sequence
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from routelit.domain import (
     AssetTarget,
@@ -11,6 +11,20 @@ from routelit.domain import (
     RouteLitRequest,
 )
 from routelit.exceptions import RerunException
+
+VerticalAlignment = Literal["top", "center", "bottom"]
+verticalAlignmentMap: Dict[VerticalAlignment, str] = {
+    "top": "flex-start",
+    "center": "center",
+    "bottom": "flex-end",
+}
+ColumnsGap = Literal["none", "small", "medium", "large"]
+columnsGapMap: Dict[ColumnsGap, str] = {
+    "none": "0",
+    "small": "1rem",
+    "medium": "2rem",
+    "large": "3rem",
+}
 
 
 class RouteLitBuilder:
@@ -245,7 +259,7 @@ class RouteLitBuilder:
             props={
                 "href": href,
                 "replace": replace,
-                "is_external": is_external,
+                "isExternal": is_external,
                 "text": text,
                 **kwargs,
             },
@@ -270,6 +284,66 @@ class RouteLitBuilder:
             **kwargs,
         )
         return self._build_nested_builder(link_element)
+
+    def container(self, key: Optional[str] = None, height: Optional[str] = None, **kwargs) -> "RouteLitBuilder":
+        container = self.create_non_widget_element(
+            name="container",
+            key=key or self._new_text_id("container"),
+            props={"style": {"height": height}, **kwargs},
+        )
+        return self._build_nested_builder(container)
+
+    def markdown(self, body: str, allow_unsafe_html: bool = False, key: Optional[str] = None, **kwargs):
+        self.create_non_widget_element(
+            name="markdown",
+            key=key or self._new_text_id("markdown"),
+            props={"body": body, "allowUnsafeHtml": allow_unsafe_html, **kwargs},
+        )
+
+    def image(self, src: str, **kwargs):
+        self.create_non_widget_element(
+            name="image",
+            key=self._new_text_id("image"),
+            props={"src": src, **kwargs},
+        )
+
+    def columns(
+        self,
+        spec: int | List[int],
+        *,
+        key: Optional[str] = None,
+        vertical_alignment: VerticalAlignment = "top",
+        columns_gap: ColumnsGap = "small",
+    ) -> List["RouteLitBuilder"]:
+        """
+        Creates a flexbox layout with several columns with the given spec.
+        Returns a list of builders for the columns.
+        """
+        if isinstance(spec, int):
+            spec = [1] * spec
+        container_key = key or self._new_text_id("container")
+        container = self.create_non_widget_element(
+            name="container",
+            key=container_key,
+            props={
+                "className": "rl-flex-row",
+                "style": {
+                    "alignItems": verticalAlignmentMap.get(vertical_alignment, "top"),
+                    "columnGap": columnsGapMap.get(columns_gap, "small"),
+                },
+            },
+        )
+        container_builder = self._build_nested_builder(container)
+        with container_builder:
+            element_builders = []
+            for column_spec in spec:
+                column = self.create_non_widget_element(
+                    name="container",
+                    key=self._new_text_id("col"),
+                    props={"style": {"flex": column_spec}},
+                )
+                element_builders.append(self._build_nested_builder(column))
+        return element_builders
 
     def rerun(self, scope: RerunType = "auto", clear_event: bool = True):
         self.elements.clear()
