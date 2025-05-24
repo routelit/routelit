@@ -1,11 +1,5 @@
-
-if [ ! -d "src/client" ]; then
-    cd src
-    git clone https://github.com/routelit/routelit-client.git client
-    cd ..
-fi
-
+git submodule update --init --recursive
 cd src/client
+pnpm install
 pnpm build:lib
 pnpm build
-cd ../..
