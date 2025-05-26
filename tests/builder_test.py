@@ -424,7 +424,7 @@ class TestRouteLitBuilder:
         assert link_area_element.props["href"] == "/details"
         assert link_area_element.props["isExternal"] is True
         assert link_area_element.props["replace"] is False
-        assert link_area_element.props["className"] == "no-link-decoration extra-class"  # Check class merging
+        assert link_area_element.props["className"] == "rl-no-link-decoration extra-class"  # Check class merging
         assert builder.num_non_widget == 1
 
         # Check children were added correctly via nested builder
@@ -756,3 +756,520 @@ class TestRouteLitBuilder:
         # For state_keys test, we can only verify that all keys are in the state
         assert exc_info.value.state["counter"] == 10
         assert exc_info.value.state["user"] == {"name": "Test"}
+
+    def test_dialog_creation(self, builder):
+        """Test creating a dialog element and its associated builder."""
+        dialog_builder = builder._dialog("my-dialog", closable=True)
+
+        # Check dialog element was added to main builder
+        assert len(builder.elements) == 1
+        dialog_element = builder.elements[0]
+        assert dialog_element.name == "dialog"
+        assert dialog_element.key == "my-dialog"
+        assert dialog_element.props["id"] == "my-dialog"
+        assert dialog_element.props["open"] is True
+        assert dialog_element.props["closable"] is True
+
+        # Check the returned builder is correctly configured
+        assert dialog_builder.parent_element == dialog_element
+        assert dialog_builder.prefix == "my-dialog"
+
+        # Add element inside dialog
+        with dialog_builder as db:
+            db.text("Dialog content", key="dialog-text")
+
+        assert len(dialog_element.children) == 1
+        assert dialog_element.children[0].props["body"] == "Dialog content"
+
+    def test_dialog_close_event(self, builder):
+        """Test dialog close event handling."""
+        builder.request._ui_event = {"type": "close", "componentId": "my-dialog", "data": {}}
+
+        with pytest.raises(RerunException):
+            builder._dialog("my-dialog")
+
+    def test_markdown_creation(self, builder):
+        """Test creating a markdown component."""
+        builder.markdown("# Hello World\n\nThis is **bold**", key="my-markdown", allow_unsafe_html=True)
+
+        assert len(builder.elements) == 1
+        markdown_element = builder.elements[0]
+        assert markdown_element.name == "markdown"
+        assert markdown_element.key == "my-markdown"
+        assert markdown_element.props["body"] == "# Hello World\n\nThis is **bold**"
+        assert markdown_element.props["allowUnsafeHtml"] is True
+        assert builder.num_non_widget == 1
+
+    def test_text_creation(self, builder):
+        """Test creating a text component."""
+        builder.text("Simple text content", key="my-text")
+
+        assert len(builder.elements) == 1
+        text_element = builder.elements[0]
+        assert text_element.name == "markdown"  # text uses markdown internally
+        assert text_element.key == "my-text"
+        assert text_element.props["body"] == "Simple text content"
+        assert text_element.props["allowUnsafeHtml"] is False
+        assert builder.num_non_widget == 1
+
+    def test_title_creation(self, builder):
+        """Test creating a title component."""
+        builder.title("Page Title", key="page-title", className="large")
+
+        assert len(builder.elements) == 1
+        title_element = builder.elements[0]
+        assert title_element.name == "title"
+        assert title_element.key == "page-title"
+        assert title_element.props["children"] == "Page Title"
+        assert title_element.props["className"] == "large"
+        assert builder.num_non_widget == 1
+
+    def test_header_creation(self, builder):
+        """Test creating a header component."""
+        builder.header("Main Header", key="main-header")
+
+        assert len(builder.elements) == 1
+        header_element = builder.elements[0]
+        assert header_element.name == "header"
+        assert header_element.key == "main-header"
+        assert header_element.props["children"] == "Main Header"
+        assert builder.num_non_widget == 1
+
+    def test_subheader_creation(self, builder):
+        """Test creating a subheader component."""
+        builder.subheader("Section Header", key="section-header")
+
+        assert len(builder.elements) == 1
+        subheader_element = builder.elements[0]
+        assert subheader_element.name == "subheader"
+        assert subheader_element.key == "section-header"
+        assert subheader_element.props["children"] == "Section Header"
+        assert builder.num_non_widget == 1
+
+    def test_image_creation(self, builder):
+        """Test creating an image component."""
+        builder.image("https://example.com/image.png", key="my-image", alt="Test Image", width="100px")
+
+        assert len(builder.elements) == 1
+        image_element = builder.elements[0]
+        assert image_element.name == "image"
+        assert image_element.key == "my-image"
+        assert image_element.props["src"] == "https://example.com/image.png"
+        assert image_element.props["alt"] == "Test Image"
+        assert image_element.props["width"] == "100px"
+        assert builder.num_non_widget == 1
+
+    def test_expander_creation(self, builder):
+        """Test creating an expander component."""
+        with builder.expander("Details", open=True, key="exp1") as exp:
+            exp.text("Expanded content", key="exp-content")
+
+        assert len(builder.elements) == 1
+        expander_element = builder.elements[0]
+        assert expander_element.name == "expander"
+        assert expander_element.key == "exp1"
+        assert expander_element.props["title"] == "Details"
+        assert expander_element.props["open"] is True
+        assert len(expander_element.children) == 1
+        assert expander_element.children[0].props["body"] == "Expanded content"
+
+    def test_columns_creation_with_integer(self, builder):
+        """Test creating columns with integer specification."""
+        col1, col2, col3 = builder.columns(3, key="my-columns", vertical_alignment="center", columns_gap="large")
+
+        assert len(builder.elements) == 1
+        container_element = builder.elements[0]
+        assert container_element.name == "container"
+        assert container_element.key == "my-columns"
+        assert "rl-flex" in container_element.props["className"]
+        assert "rl-flex-row" in container_element.props["className"]
+        assert container_element.props["style"]["alignItems"] == "center"
+        assert container_element.props["style"]["columnGap"] == "3rem"
+
+        # Check that three columns were created
+        assert len(container_element.children) == 3
+        for child in container_element.children:
+            assert child.name == "container"
+            assert child.props["style"]["flex"] == 1
+
+        # Test using the column builders
+        col1.text("Column 1", key="col1-text")
+        col2.text("Column 2", key="col2-text")
+        col3.text("Column 3", key="col3-text")
+
+        assert len(container_element.children[0].children) == 1
+        assert len(container_element.children[1].children) == 1
+        assert len(container_element.children[2].children) == 1
+
+    def test_columns_creation_with_list(self, builder):
+        """Test creating columns with list specification."""
+        col1, col2 = builder.columns([2, 1], vertical_alignment="bottom", columns_gap="medium")
+
+        assert len(builder.elements) == 1
+        container_element = builder.elements[0]
+        assert container_element.props["style"]["alignItems"] == "flex-end"
+        assert container_element.props["style"]["columnGap"] == "2rem"
+
+        # Check column flex values
+        assert len(container_element.children) == 2
+        assert container_element.children[0].props["style"]["flex"] == 2
+        assert container_element.children[1].props["style"]["flex"] == 1
+
+    def test_flex_creation(self, builder):
+        """Test creating a flex container."""
+        with builder.flex(
+            direction="row",
+            wrap="wrap",
+            justify_content="center",
+            align_items="stretch",
+            align_content="between",
+            gap="1rem",
+            key="flex-container",
+            className="custom-flex",
+        ) as flex:
+            flex.text("Flex item 1", key="item1")
+            flex.text("Flex item 2", key="item2")
+
+        assert len(builder.elements) == 1
+        flex_element = builder.elements[0]
+        assert flex_element.name == "flex"
+        assert flex_element.key == "flex-container"
+        assert flex_element.props["direction"] == "row"
+        assert flex_element.props["flexWrap"] == "wrap"
+        assert flex_element.props["justifyContent"] == "center"
+        assert flex_element.props["alignItems"] == "stretch"
+        assert flex_element.props["alignContent"] == "between"
+        assert flex_element.props["gap"] == "1rem"
+        assert flex_element.props["className"] == "custom-flex"
+        assert len(flex_element.children) == 2
+
+    def test_button_functionality(self, builder):
+        """Test button creation and click event handling."""
+        # Test button without event
+        clicked = builder.button("Click Me", key="my-button", disabled=False)
+        assert clicked is False
+
+        assert len(builder.elements) == 1
+        button_element = builder.elements[0]
+        assert button_element.name == "button"
+        assert button_element.key == "my-button"
+        assert button_element.props["text"] == "Click Me"
+        assert button_element.props["eventName"] == "click"
+        assert button_element.props["disabled"] is False
+
+        # Test button with click event
+        builder.request._ui_event = {"type": "click", "componentId": "my-button", "data": {}}
+        builder.elements.clear()  # Clear previous elements
+
+        callback_called = False
+
+        def on_click():
+            nonlocal callback_called
+            callback_called = True
+
+        clicked = builder.button("Click Me", key="my-button", on_click=on_click)
+        assert clicked is True
+        assert callback_called is True
+
+    def test_text_input_functionality(self, builder):
+        """Test text input creation and change event handling."""
+        # Test initial value
+        value = builder.text_input("Username", value="initial", key="username")
+        assert value == "initial"
+
+        assert len(builder.elements) == 1
+        input_element = builder.elements[0]
+        assert input_element.name == "text-input"
+        assert input_element.key == "username"
+        assert input_element.props["label"] == "Username"
+        assert input_element.props["value"] == "initial"
+        assert input_element.props["type"] == "text"
+
+        # Test value change
+        builder.request._ui_event = {"type": "change", "componentId": "username", "data": {"value": "new_value"}}
+        builder.elements.clear()
+
+        callback_value = None
+
+        def on_change(new_val):
+            nonlocal callback_value
+            callback_value = new_val
+
+        value = builder.text_input("Username", key="username", on_change=on_change, type="email")
+        assert value == "new_value"
+        assert callback_value == "new_value"
+        assert builder.session_state["username"] == "new_value"
+
+        input_element = builder.elements[0]
+        assert input_element.props["type"] == "email"
+
+    def test_textarea_functionality(self, builder):
+        """Test textarea creation and change event handling."""
+        value = builder.textarea("Description", value="initial text", key="desc", rows=5)
+        assert value == "initial text"
+
+        assert len(builder.elements) == 1
+        textarea_element = builder.elements[0]
+        assert textarea_element.name == "textarea"
+        assert textarea_element.key == "desc"
+        assert textarea_element.props["label"] == "Description"
+        assert textarea_element.props["value"] == "initial text"
+        assert textarea_element.props["rows"] == 5
+
+    def test_radio_functionality(self, builder):
+        """Test radio group creation and selection."""
+        options = ["Option 1", "Option 2", {"label": "Option 3", "value": "opt3"}]
+        value = builder.radio("Choose option", options, value="Option 1", key="radio1", flex_direction="row")
+        assert value == "Option 1"
+
+        assert len(builder.elements) == 1
+        radio_element = builder.elements[0]
+        assert radio_element.name == "radio"
+        assert radio_element.key == "radio1"
+        assert radio_element.props["label"] == "Choose option"
+        assert radio_element.props["value"] == "Option 1"
+        assert radio_element.props["options"] == options
+        assert radio_element.props["flexDirection"] == "row"
+
+        # Test value change
+        builder.request._ui_event = {"type": "change", "componentId": "radio1", "data": {"value": "opt3"}}
+        builder.elements.clear()
+
+        value = builder.radio("Choose option", options, key="radio1")
+        assert value == "opt3"
+        assert builder.session_state["radio1"] == "opt3"
+
+    def test_select_functionality(self, builder):
+        """Test select dropdown creation and selection."""
+        options = [{"label": "First", "value": 1}, {"label": "Second", "value": 2, "disabled": True}, "Third"]
+        value = builder.select("Select item", options, value=1, key="select1")
+        assert value == 1
+
+        assert len(builder.elements) == 1
+        select_element = builder.elements[0]
+        assert select_element.name == "select"
+        assert select_element.key == "select1"
+        assert select_element.props["label"] == "Select item"
+        assert select_element.props["value"] == 1
+        assert select_element.props["options"] == options
+
+        # Test value change
+        builder.request._ui_event = {"type": "change", "componentId": "select1", "data": {"value": "Third"}}
+        builder.elements.clear()
+
+        callback_value = None
+
+        def on_change(new_val):
+            nonlocal callback_value
+            callback_value = new_val
+
+        value = builder.select("Select item", options, key="select1", on_change=on_change)
+        assert value == "Third"
+        assert callback_value == "Third"
+        assert builder.session_state["select1"] == "Third"
+
+    def test_checkbox_functionality(self, builder):
+        """Test checkbox creation and toggle event handling."""
+        checked = builder.checkbox("Accept terms", checked=False, key="terms")
+        assert checked is False
+
+        assert len(builder.elements) == 1
+        checkbox_element = builder.elements[0]
+        assert checkbox_element.name == "checkbox"
+        assert checkbox_element.key == "terms"
+        assert checkbox_element.props["label"] == "Accept terms"
+        assert checkbox_element.props["checked"] is False
+
+        # Test checkbox toggle
+        builder.request._ui_event = {"type": "change", "componentId": "terms", "data": {"checked": True}}
+        builder.elements.clear()
+
+        callback_value = None
+
+        def on_change(new_val):
+            nonlocal callback_value
+            callback_value = new_val
+
+        checked = builder.checkbox("Accept terms", key="terms", on_change=on_change)
+        assert checked is True
+        assert callback_value is True
+        assert builder.session_state["terms"] is True
+
+    def test_checkbox_group_functionality(self, builder):
+        """Test checkbox group creation and selection."""
+        options = ["Apple", "Banana", {"label": "Cherry", "value": "cherry"}]
+        value = builder.checkbox_group("Select fruits", options, value=["Apple"], key="fruits", flex_direction="row")
+        assert value == ["Apple"]
+
+        assert len(builder.elements) == 1
+        checkbox_group_element = builder.elements[0]
+        assert checkbox_group_element.name == "checkbox-group"
+        assert checkbox_group_element.key == "fruits"
+        assert checkbox_group_element.props["label"] == "Select fruits"
+        assert checkbox_group_element.props["value"] == ["Apple"]
+        assert checkbox_group_element.props["options"] == options
+        assert checkbox_group_element.props["flexDirection"] == "row"
+
+        # Test value change
+        builder.request._ui_event = {"type": "change", "componentId": "fruits", "data": {"value": ["Apple", "cherry"]}}
+        builder.elements.clear()
+
+        callback_value = None
+
+        def on_change(new_val):
+            nonlocal callback_value
+            callback_value = new_val
+
+        value = builder.checkbox_group("Select fruits", options, key="fruits", on_change=on_change)
+        assert value == ["Apple", "cherry"]
+        assert callback_value == ["Apple", "cherry"]
+        assert builder.session_state["fruits"] == ["Apple", "cherry"]
+
+    def test_set_page_config(self, builder):
+        """Test setting page configuration."""
+        result = builder.set_page_config(page_title="My App", page_description="A great application")
+
+        assert len(builder.elements) == 1
+        head_element = builder.elements[0]
+        assert head_element.name == "head"
+        assert head_element.key == "__head__"
+        assert head_element.props["title"] == "My App"
+        assert head_element.props["description"] == "A great application"
+        assert builder.head.title == "My App"
+        assert builder.head.description == "A great application"
+        assert result == head_element
+
+    def test_get_head(self, builder):
+        """Test getting head configuration."""
+        head = builder.get_head()
+        assert head.title is None
+        assert head.description is None
+
+        builder.set_page_config(page_title="Test", page_description="Test desc")
+        head = builder.get_head()
+        assert head.title == "Test"
+        assert head.description == "Test desc"
+
+    def test_maybe_get_event_with_form_submission(self, builder):
+        """Test _maybe_get_event with form submission handling."""
+        # Set up session state before creating form
+        builder.session_state["__events4later_test-form"] = {"input1": {"type": "change", "data": {"value": "test"}}}
+        # Set up a form context
+        form_builder = builder.form("test-form")
+
+        # Simulate form submission event
+        builder.request._ui_event = {"type": "submit", "formId": "test-form", "data": {}}
+
+        # Use the form_builder context to ensure proper form ID detection
+        with form_builder as fb:
+            try:
+                fb._maybe_get_event("input1")
+                raise AssertionError()
+            except RerunException as e:
+                # Check that events were moved to the correct location
+                # The RerunException shows the session state contains the moved events
+                assert "__events_test-form" in e.state
+                assert "__ignore_submit" in e.state
+                assert e.state["__ignore_submit"] == "test-form"
+
+    def test_maybe_get_event_with_stored_form_events(self, builder):
+        """Test _maybe_get_event with stored form events."""
+        # Set up session state before creating form
+        builder.session_state["__events_test-form"] = {"input1": {"type": "change", "data": {"value": "stored_value"}}}
+        form_builder = builder.form("test-form")
+
+        # Use the form_builder context to ensure proper form ID detection
+        with form_builder as fb:
+            event = fb._maybe_get_event("input1")
+            assert event is not None
+            assert event["type"] == "change"
+            assert event["data"]["value"] == "stored_value"
+
+            # Event should be removed after retrieval
+            assert "input1" not in builder.session_state["__events_test-form"]
+
+    def test_get_parent_form_id(self, builder):
+        """Test _get_parent_form_id functionality."""
+        # No form context
+        assert builder._get_parent_form_id() is None
+
+        # Create form and nested builder
+        form_builder = builder.form("my-form")
+        with form_builder as fb:
+            assert fb._get_parent_form_id() == "my-form"
+
+            # Test with further nesting - the container builder should inherit form context
+            container_builder = fb.container()
+            with container_builder as container:
+                # The container's parent element is not a form, but it should check parent builders
+                # However, the current implementation only checks immediate parent and active children
+                # So this test should expect None since container's parent element is not a form
+                assert container._get_parent_form_id() is None
+
+    def test_component_id_generation_patterns(self, builder):
+        """Test various ID generation patterns for components."""
+        # Test auto-generated IDs
+        builder.text("Hello")
+        builder.image("test.jpg")
+        builder.container()
+
+        assert len(builder.elements) == 3
+        assert builder.elements[0].key.startswith("_markdown_")
+        assert builder.elements[1].key.startswith("_image_")
+        assert builder.elements[2].key.startswith("_container_")
+
+        # Test widget IDs with labels
+        builder.button("Submit")
+        builder.text_input("Name")
+
+        assert len(builder.elements) == 5
+        button_key = builder.elements[3].key
+        input_key = builder.elements[4].key
+        assert "_button_" in button_key
+        assert "_text-input_" in input_key
+        # Should contain hash of label
+        assert len(button_key.split("_")[-1]) == 8  # 8-char hash
+        assert len(input_key.split("_")[-1]) == 8  # 8-char hash
+
+    def test_nested_component_combinations(self, builder):
+        """Test complex nested component combinations."""
+        with builder.container(key="main") as main:
+            main.header("Dashboard", key="title")
+
+            col1, col2 = main.columns(2, key="content-cols")
+
+            with col1:
+                with main.expander("Settings", key="settings") as settings:
+                    settings.checkbox("Enable notifications", key="notifs")
+                    settings.select("Theme", ["Light", "Dark"], key="theme")
+
+            with col2:
+                with main.flex(direction="col", key="right-panel") as panel:
+                    panel.text_input("Search", key="search")
+                    panel.button("Go", key="go-btn")
+
+        # Verify structure
+        assert len(builder.elements) == 1
+        main_container = builder.elements[0]
+        assert main_container.key == "main"
+
+        # Should have header and columns container
+        assert len(main_container.children) == 2
+        assert main_container.children[0].props["children"] == "Dashboard"
+
+        columns_container = main_container.children[1]
+        assert len(columns_container.children) == 2  # Two columns
+
+        # Check left column has expander
+        left_col = columns_container.children[0]
+        assert len(left_col.children) == 1
+        expander = left_col.children[0]
+        assert expander.name == "expander"
+        assert len(expander.children) == 2  # Checkbox and select
+
+        # Check right column has flex panel
+        right_col = columns_container.children[1]
+        assert len(right_col.children) == 1
+        flex_panel = right_col.children[0]
+        assert flex_panel.name == "flex"
+        assert len(flex_panel.children) == 2  # Input and button

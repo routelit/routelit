@@ -31,7 +31,7 @@ ViewFn = Callable[[RouteLitBuilder], Any]
 class RouteLit:
     def __init__(
         self,
-        BuilderClass: Type[RouteLitBuilder],
+        BuilderClass: Type[RouteLitBuilder] = RouteLitBuilder,
         session_storage: Optional[MutableMapping[str, MutableMapping[str, Any]]] = None,
     ):
         self.BuilderClass = BuilderClass
@@ -234,8 +234,8 @@ class RouteLit:
             def wrapper(rl: RouteLitBuilder, *args, **kwargs):
                 args, kwargs = self._preprocess_fragment_params(rl, fragment_key, args, kwargs)
 
-                with rl._fragment(fragment_key) as rl2:
-                    res = view_fn(rl2, *args, **kwargs)
+                with rl._fragment(fragment_key):
+                    res = view_fn(rl, *args, **kwargs)
                     return res
 
             self._register_fragment(fragment_key, wrapper)

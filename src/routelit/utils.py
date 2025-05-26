@@ -1,5 +1,6 @@
-from typing import Any, List, Optional, Union
-from .domain import Action, RouteLitElement, AddAction, RemoveAction, UpdateAction
+from typing import List, Optional, Union
+
+from .domain import Action, AddAction, RemoveAction, RouteLitElement, UpdateAction
 
 
 def compare_elements(
@@ -35,7 +36,7 @@ def compare_elements(
     # Step 1: Process removals from right to left to avoid index shifts
     for key in sorted(keys_to_remove, key=lambda k: -a_map[k][0]):
         idx = current_state.index(key)
-        actions.append(RemoveAction(address=address + [idx], key=key))
+        actions.append(RemoveAction(address=[*address, idx], key=key))
         current_state.pop(idx)
 
     # Step 2: Process position changes and additions
@@ -77,13 +78,13 @@ def compare_elements(
 
                 if old_elem.props != new_elem.props:
                     # Element moved AND props changed - remove and add
-                    actions.append(RemoveAction(address=address + [current_idx], key=key))
-                    actions.append(AddAction(address=address + [expected_idx], element=new_elem, key=key))
+                    actions.append(RemoveAction(address=[*address, current_idx], key=key))
+                    actions.append(AddAction(address=[*address, expected_idx], element=new_elem, key=key))
                 else:
                     # Element moved but props unchanged - we could optimize with a special move action
                     # For now, simulate with remove and add
-                    actions.append(RemoveAction(address=address + [current_idx], key=key))
-                    actions.append(AddAction(address=address + [expected_idx], element=new_elem, key=key))
+                    actions.append(RemoveAction(address=[*address, current_idx], key=key))
+                    actions.append(AddAction(address=[*address, expected_idx], element=new_elem, key=key))
             else:
                 # Position is correct, check if props need updating
                 old_elem = a_map[key][1]
@@ -92,7 +93,7 @@ def compare_elements(
                 if old_elem.props != new_elem.props:
                     actions.append(
                         UpdateAction(
-                            address=address + [current_idx],
+                            address=[*address, current_idx],
                             props=new_elem.props,
                             key=key,
                         )
@@ -119,7 +120,7 @@ def compare_elements(
 
             # Add the new element
             new_elem = b_map[key][1]
-            actions.append(AddAction(address=address + [insert_at], element=new_elem, key=key))
+            actions.append(AddAction(address=[*address, insert_at], element=new_elem, key=key))
             current_state.insert(insert_at, key)
 
     # Step 3: Process children recursively
@@ -135,7 +136,7 @@ def compare_elements(
                 old_children = a[old_idx].children or []
                 new_children = b[new_idx].children or []
 
-                child_actions = compare_elements(old_children, new_children, address=address + [current_idx])
+                child_actions = compare_elements(old_children, new_children, address=[*address, current_idx])
                 actions.extend(child_actions)
 
     return actions
@@ -147,7 +148,9 @@ def get_elements_at_address(elements: List[RouteLitElement], address: List[int])
     return elements
 
 
-def set_elements_at_address(elements: List[RouteLitElement], address: List[int], value: List[RouteLitElement]) -> List[RouteLitElement]:
+def set_elements_at_address(
+    elements: List[RouteLitElement], address: List[int], value: List[RouteLitElement]
+) -> List[RouteLitElement]:
     new_elements = elements.copy()
     el_or_els: Union[List[RouteLitElement], RouteLitElement] = new_elements
     for idx in address:

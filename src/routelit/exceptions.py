@@ -3,6 +3,7 @@ from typing import Any
 
 from routelit.domain import RerunType
 
+
 class RerunException(Exception):
     """
     Exception raised to rerun the view function.

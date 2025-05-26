@@ -101,6 +101,10 @@ ignore = [
     "E731",
     "UP006", # Ignore using List/Dict instead of list/dict
     "UP035", # Ignore using List/Dict instead of list/dict
+    "A002", # Ignore argument shadowing builtin
+    "C901", # Ignore too complex function
+    "TRY003", # Ignore Avoid specifying long messages outside the exception class
+    "SIM117",  # Ignore nested `with` statements
 ]
 
 [tool.ruff.lint.per-file-ignores]
