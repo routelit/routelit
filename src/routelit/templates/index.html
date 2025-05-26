@@ -18,6 +18,7 @@
     </script>
     <script type="module" src="{{ LOCAL_FRONTEND_SERVER }}/@vite/client"></script>
     <script type="module" src="{{ LOCAL_FRONTEND_SERVER }}/src/main.jsx"></script>
+    <script type="module" src="{{ LOCAL_ELEMENTS_SERVER }}/src/setup.js"></script>
     {% else %}
     <!-- In production: Load from built files -->
     {% for css_asset in default_vite_assets.css_files %}

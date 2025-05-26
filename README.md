@@ -1,15 +1,17 @@
 # routelit
 
-[![Release](https://img.shields.io/github/v/release/rolangom/routelit)](https://img.shields.io/github/v/release/rolangom/routelit)
-[![Build status](https://img.shields.io/github/actions/workflow/status/rolangom/routelit/main.yml?branch=main)](https://github.com/rolangom/routelit/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/rolangom/routelit/branch/main/graph/badge.svg)](https://codecov.io/gh/rolangom/routelit)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/rolangom/routelit)](https://img.shields.io/github/commit-activity/m/rolangom/routelit)
-[![License](https://img.shields.io/github/license/rolangom/routelit)](https://img.shields.io/github/license/rolangom/routelit)
+[![Release](https://img.shields.io/github/v/release/routelit/routelit)](https://img.shields.io/github/v/release/routelit/routelit)
+[![Build status](https://img.shields.io/github/actions/workflow/status/routelit/routelit/main.yml?branch=main)](https://github.com/routelit/routelit/actions/workflows/main.yml?query=branch%3Amain)
+[![codecov](https://codecov.io/gh/routelit/routelit/branch/main/graph/badge.svg)](https://codecov.io/gh/routelit/routelit)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/routelit/routelit)](https://img.shields.io/github/commit-activity/m/routelit/routelit)
+[![License](https://img.shields.io/github/license/routelit/routelit)](https://img.shields.io/github/license/routelit/routelit)
 
-Project to build easy user interfaces, agnostic framework
+![Routelit](https://wsrv.nl/?url=res.cloudinary.com/rolangom/image/upload/v1747976918/routelit/routelit_c2otsv.png&w=300&h=300)
 
-- **Github repository**: <https://github.com/rolangom/routelit/>
-- **Documentation** <https://rolangom.github.io/routelit/>
+Project to build easy user interfaces, framework agnostic.
+
+- **Github repository**: <https://github.com/routelit/routelit/>
+- **Documentation** <https://routelit.github.io/routelit/>
 
 ## Getting started with your project
 
@@ -21,7 +23,7 @@ First, create a repository on GitHub with the same name as this project, and the
 git init -b main
 git add .
 git commit -m "init commit"
-git remote add origin git@github.com:rolangom/routelit.git
+git remote add origin git@github.com:routelit/routelit.git
 git push -u origin main
 ```
 
