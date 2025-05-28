@@ -177,12 +177,12 @@ class MockBuilder(RouteLitBuilder):
 
     def text(self, text: str, key: Optional[str] = None):
         key = key or self._new_text_id("text")
-        self.create_non_widget_element("text", key, {"text": text}, address=self._get_next_address())
+        self._create_non_widget_element("text", key, {"text": text}, address=self._get_next_address())
 
     def button(self, label: str, key: Optional[str] = None) -> bool:
         key = key or self._new_widget_id("button", label)
         el_key = f"{self.prefix}_{key}" if self.prefix else key
-        self.create_element("button", key, {"label": label})
+        self._create_element("button", key, {"label": label})
         has_event, _ = self._get_event_value(el_key, "click")
         if has_event:
             self.session_state[f"{key}_clicked"] = True
@@ -199,7 +199,7 @@ class MockBuilder(RouteLitBuilder):
             current_value = event_data["value"]
             self.session_state[key] = current_value
 
-        self.create_element("text-input", key, {"label": label, "value": current_value, "placeholder": placeholder})
+        self._create_element("text-input", key, {"label": label, "value": current_value, "placeholder": placeholder})
         return current_value
 
     def checkbox(self, label: str, value: bool = False, key: Optional[str] = None) -> bool:
@@ -211,12 +211,12 @@ class MockBuilder(RouteLitBuilder):
             current_value = event_data["checked"]
             self.session_state[key] = current_value
 
-        self.create_element("checkbox", key, {"label": label, "checked": current_value})
+        self._create_element("checkbox", key, {"label": label, "checked": current_value})
         return current_value
 
     def expander(self, title: str, is_open: Optional[bool] = None, key: Optional[str] = None):
         key = key or self._new_widget_id("expander", title)
-        element = self.create_element("expander", key, {"title": title, "open": is_open})
+        element = self._create_element("expander", key, {"title": title, "open": is_open})
         return self._build_nested_builder(element)
 
 

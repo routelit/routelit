@@ -15,6 +15,9 @@ from typing import (
 from urllib.parse import urlparse
 
 COOKIE_SESSION_KEY = "ROUTELIT_SESSION_ID"
+"""
+The key of the session id in the cookie.
+"""
 
 RerunType = Literal["auto", "app"]
 """
@@ -24,6 +27,10 @@ RerunType = Literal["auto", "app"]
 
 
 class RouteLitEvent(TypedDict):
+    """
+    The event to be executed by the RouteLit app.
+    """
+
     type: Literal["click", "changed", "navigate"]
     componentId: str
     data: Dict[str, Any]
@@ -31,6 +38,10 @@ class RouteLitEvent(TypedDict):
 
 
 class SessionKeys(NamedTuple):
+    """
+    The keys to the session state of the RouteLit app.
+    """
+
     ui_key: str
     state_key: str
     fragment_addresses_key: str
@@ -47,6 +58,10 @@ class SessionKeys(NamedTuple):
 
 @dataclass
 class RouteLitElement:
+    """
+    The element to be rendered by the RouteLit app.
+    """
+
     name: str
     props: Dict[str, Any]
     key: str
@@ -58,13 +73,17 @@ class RouteLitElement:
 class Action:
     address: Sequence[int]
     """
-      The address is the sequence of indices to the array tree of elements in the session state
+      (Sequence[int]) The address is the sequence of indices to the array tree of elements in the session state
       from the root to the target element.
     """
 
 
 @dataclass
 class AddAction(Action):
+    """
+    The action to add an element.
+    """
+
     element: RouteLitElement
     key: str
     type: Literal["add"] = "add"
@@ -72,12 +91,20 @@ class AddAction(Action):
 
 @dataclass
 class RemoveAction(Action):
+    """
+    The action to remove an element.
+    """
+
     key: str
     type: Literal["remove"] = "remove"
 
 
 @dataclass
 class UpdateAction(Action):
+    """
+    The action to update the props of an element.
+    """
+
     props: Dict[str, Any]
     key: str
     type: Literal["update"] = "update"
@@ -85,11 +112,20 @@ class UpdateAction(Action):
 
 @dataclass
 class ActionsResponse:
+    """
+    The actions to be executed by the RouteLit app.
+    """
+
     actions: List[Action]
     target: Literal["app", "fragment"]
 
 
 class RouteLitRequest(ABC):
+    """
+    The request class for the RouteLit app.
+    This class should be implemented by the web framework you want to integrate with.
+    """
+
     def __init__(self):
         self._ui_event = self._get_ui_event()
         self._fragment_id = self._get_fragment_id()

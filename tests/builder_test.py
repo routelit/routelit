@@ -195,18 +195,18 @@ class TestRouteLitBuilder:
     def test_append_element_simple(self, builder):
         """Test appending an element directly to the builder."""
         element = RouteLitElement(key="el1", name="text", props={})
-        builder.append_element(element)
+        builder._append_element(element)
         assert builder.elements == [element]
 
     def test_add_non_widget(self, builder):
         """Test adding a non-widget element increments counter."""
         assert builder.num_non_widget == 0
         element = RouteLitElement(key="nw1", name="div", props={})
-        builder.add_non_widget(element)
+        builder._add_non_widget(element)
         assert builder.elements == [element]
         assert builder.num_non_widget == 1
         element2 = RouteLitElement(key="nw2", name="span", props={})
-        builder.add_non_widget(element2)
+        builder._add_non_widget(element2)
         assert builder.elements == [element, element2]
         assert builder.num_non_widget == 2
 
@@ -214,7 +214,7 @@ class TestRouteLitBuilder:
         """Test adding a widget element does not increment non-widget counter."""
         assert builder.num_non_widget == 0
         element = RouteLitElement(key="w1", name="button", props={})
-        builder.add_widget(element)
+        builder._add_widget(element)
         assert builder.elements == [element]
         assert builder.num_non_widget == 0  # Stays 0
 
@@ -222,18 +222,18 @@ class TestRouteLitBuilder:
         """Test address calculation for next and last elements."""
         builder.address = [1]  # Simulate being a nested builder
         assert builder._get_next_address() == [1, 0]  # Next address before adding first element is 0
-        el1 = builder.create_element("text", "t1")
+        el1 = builder._create_element("text", "t1")
         assert builder._get_last_address() == [1, 0]  # Address of the first added element is index 0
         assert el1.address is None  # Address is not set by create_element by default
         assert builder._get_next_address() == [1, 1]  # Next address after adding first element (at 0) is 1
         next_addr = builder._get_next_address()  # Calculate next address before adding
-        el2 = builder.create_non_widget_element("div", "d1", address=next_addr)
+        el2 = builder._create_non_widget_element("div", "d1", address=next_addr)
         assert el2.address == [1, 1]  # Address passed is used by the element
         assert builder._get_last_address() == [1, 1]  # Address of the second added element seems to be 1
 
     def test_nested_builder_context_manager(self, builder):
         """Test using a nested builder via context manager (__enter__/__exit__)."""
-        parent_element = builder.create_element("container", key="cont1")
+        parent_element = builder._create_element("container", key="cont1")
         assert builder.active_child_builder is None
 
         with builder._build_nested_builder(parent_element) as nested:
@@ -243,7 +243,7 @@ class TestRouteLitBuilder:
             assert nested.address == [0]  # Address of the parent element
 
             # Elements added inside 'with' go to the nested builder
-            nested_el = nested.create_element("item", key="item1")
+            nested_el = nested._create_element("item", key="item1")
             assert nested.elements == [nested_el]
             assert builder.elements == [parent_element]  # Original builder unchanged so far
             assert parent_element.children == [nested_el]  # Parent element's children are updated
@@ -255,18 +255,18 @@ class TestRouteLitBuilder:
 
     def test_append_element_redirects_to_active_child(self, builder):
         """Test that append_element redirects to the active child builder."""
-        parent_element = builder.create_element("container", key="cont1")
+        parent_element = builder._create_element("container", key="cont1")
         with builder._build_nested_builder(parent_element) as nested:
             # Appending directly to the parent builder while child is active
             redirected_element = RouteLitElement(key="redir", name="span", props={})
-            builder.append_element(redirected_element)
+            builder._append_element(redirected_element)
 
             assert nested.elements == [redirected_element]  # Element added to nested builder
             assert builder.elements == [parent_element]  # Parent unchanged
 
     def test_id_generation_redirects_to_active_child(self, builder):
         """Test that ID generation uses the active child builder's state."""
-        parent_element = builder.create_element("container", key="cont1")
+        parent_element = builder._create_element("container", key="cont1")
         with builder._build_nested_builder(parent_element) as nested:
             nested.num_non_widget = 3
             builder.num_non_widget = 10  # Parent has different count
@@ -299,15 +299,15 @@ class TestRouteLitBuilder:
 
         # Add element inside fragment
         with frag_builder as fb:
-            fb.create_element("text", key="t1", props={"content": "hello"})  # Explicit key doesn't get prefixed
+            fb._create_element("text", key="t1", props={"content": "hello"})  # Explicit key doesn't get prefixed
 
         assert len(frag_element.children) == 1
         assert frag_element.children[0].key == "t1"  # Key remains "t1" when using create_element
 
     def test_get_elements_without_fragment(self, builder):
         """Test get_elements when no initial fragment ID is set."""
-        builder.create_element("div", "d1")
-        builder.create_element("span", "s1")
+        builder._create_element("div", "d1")
+        builder._create_element("span", "s1")
         assert builder.get_elements() == builder.elements
 
     def test_get_elements_with_fragment(self, builder, mock_request):
@@ -323,8 +323,8 @@ class TestRouteLitBuilder:
         # Build elements *as if* they are inside the fragment
         # In a real scenario, the fragment's view function would be called
         # directly with this builder.
-        fragmented_builder.create_element("text", "t1")
-        fragmented_builder.create_element("button", "b1")
+        fragmented_builder._create_element("text", "t1")
+        fragmented_builder._create_element("button", "b1")
 
         # get_elements should return the elements directly (not wrapped in fragment)
         # because this builder *is* the fragment builder in this context.
@@ -335,14 +335,14 @@ class TestRouteLitBuilder:
 
         # Let's simulate the structure RouteLit creates
         main_builder = RouteLitBuilder(request=MockRequestBuilder(), session_state={})
-        main_builder.create_element("header", "h1")
-        frag_element = main_builder.create_non_widget_element("fragment", "frag1", address=[1])
+        main_builder._create_element("header", "h1")
+        frag_element = main_builder._create_non_widget_element("fragment", "frag1", address=[1])
         # Normally, RouteLit would call the fragment view function with a builder
         # whose parent_element is frag_element.
         frag_builder = main_builder._build_nested_builder(frag_element)
         with frag_builder as fb:
-            fb.create_element("text", "t1")
-            fb.create_element("button", "b1")
+            fb._create_element("text", "t1")
+            fb._create_element("button", "b1")
 
         # If we are RouteLit handling a request for fragment_id='frag1':
         # RouteLit would construct a new builder specifically for the fragment call:
@@ -356,8 +356,8 @@ class TestRouteLitBuilder:
         )
         # Now, the fragment view function is called with builder_for_fragment_call
         # Let's assume it does the same thing:
-        builder_for_fragment_call.create_element("text", "t1")
-        builder_for_fragment_call.create_element("button", "b1")
+        builder_for_fragment_call._create_element("text", "t1")
+        builder_for_fragment_call._create_element("button", "b1")
 
         # When RouteLit calls get_elements on this builder, it expects the direct children:
         result_elements = builder_for_fragment_call.get_elements()
@@ -414,8 +414,8 @@ class TestRouteLitBuilder:
         with builder.link_area(
             "/details", key="details-area", is_external=True, className="extra-class"
         ) as area_builder:
-            area_builder.create_element("img", key="icon")
-            area_builder.create_element("span", key="label", props={"text": "Details"})
+            area_builder._create_element("img", key="icon")
+            area_builder._create_element("span", key="label", props={"text": "Details"})
 
         assert len(builder.elements) == 1
         link_area_element = builder.elements[0]
@@ -479,7 +479,7 @@ class TestRouteLitBuilder:
     def test_session_state_in_nested_builders(self, builder):
         """Test that session_state is shared across nested builders."""
         builder.session_state["outer_value"] = 100
-        parent_element = builder.create_element("container", key="cont")
+        parent_element = builder._create_element("container", key="cont")
 
         with builder._build_nested_builder(parent_element) as nested:
             assert nested.session_state == builder.session_state  # Should be the same object
@@ -503,14 +503,14 @@ class TestRouteLitBuilder:
 
     def test_deeply_nested_builders(self, builder):
         """Test address calculation and ID generation in deeply nested builders."""
-        with builder._build_nested_builder(builder.create_element("div", "level1")) as b1:
+        with builder._build_nested_builder(builder._create_element("div", "level1")) as b1:
             assert b1.prefix == "level1"
             assert b1.address == [0]
-            with b1._build_nested_builder(b1.create_element("div", "level2")) as b2:
+            with b1._build_nested_builder(b1._create_element("div", "level2")) as b2:
                 assert b2.prefix == "level2"  # Prefix is not concatenated
                 assert b2.address == [0, 0]  # Address reflects nesting
                 b2.num_non_widget = 5
-                with b2._build_nested_builder(b2.create_element("div", "level3")) as b3:
+                with b2._build_nested_builder(b2._create_element("div", "level3")) as b3:
                     assert b3.prefix == "level3"  # Prefix is not concatenated
                     assert b3.address == [0, 0, 0]
                     b3.num_non_widget = 8
@@ -522,19 +522,19 @@ class TestRouteLitBuilder:
                     assert b1._new_text_id("span") == "level2_span_5"
 
                     # Test address calculation
-                    _el3 = b3.create_element("p", "p1")
+                    _el3 = b3._create_element("p", "p1")
                     assert b3._get_last_address() == [0, 0, 0, 0]
                     # Current implementation returns the next index
                     assert b3._get_next_address() == [0, 0, 0, 1]
 
                 # Test address calculation after exiting inner context
-                _el2 = b2.create_element("p", "p2")  # Added to level2 builder
+                _el2 = b2._create_element("p", "p2")  # Added to level2 builder
                 assert b2._get_last_address() == [0, 0, 1]  # Address relative to level2
                 # Current implementation returns the next available index
                 assert b2._get_next_address() == [0, 0, 2]
 
             # Test address calculation after exiting level2 context
-            _el1 = b1.create_element("p", "p3")  # Added to level1 builder
+            _el1 = b1._create_element("p", "p3")  # Added to level1 builder
             assert b1._get_last_address() == [0, 1]  # Address relative to level1
             # Current implementation returns the next available index
             assert b1._get_next_address() == [0, 2]
@@ -551,7 +551,7 @@ class TestRouteLitBuilder:
 
         # Link area with empty href
         with builder.link_area("", key="la1") as la1_builder:
-            la1_builder.create_element("div", "d1")
+            la1_builder._create_element("div", "d1")
         assert builder.elements[-1].props["href"] == ""
 
         # The link_area method requires href parameter, so we can't test with no href
@@ -559,7 +559,7 @@ class TestRouteLitBuilder:
 
     def test_text_element_creation(self, builder):
         """Test creating a text element with various properties."""
-        text = builder.create_non_widget_element(
+        text = builder._create_non_widget_element(
             "text", key="greeting", props={"content": "Hello World", "className": "large", "style": {"color": "red"}}
         )
         assert len(builder.elements) == 1
@@ -573,7 +573,7 @@ class TestRouteLitBuilder:
 
     def test_button_creation(self, builder):
         """Test creating a button element with event handler."""
-        button = builder.create_element(
+        button = builder._create_element(
             "button", key="submit-btn", props={"text": "Click Me", "onClick": "handleClick", "disabled": True}
         )
         assert len(builder.elements) == 1
@@ -588,8 +588,8 @@ class TestRouteLitBuilder:
     def test_container_with_children(self, builder):
         """Test creating a container with child elements."""
         with builder.container(key="main", className="wrapper") as container:
-            container.create_non_widget_element("text", key="header", props={"content": "Header"})
-            container.create_non_widget_element("text", key="content", props={"content": "Content"})
+            container._create_non_widget_element("text", key="header", props={"content": "Header"})
+            container._create_non_widget_element("text", key="content", props={"content": "Content"})
 
         assert len(builder.elements) == 1
         container_element = builder.elements[0]
@@ -606,11 +606,11 @@ class TestRouteLitBuilder:
             # Add onSubmit to the form props directly after creation
             form.parent_element.props["onSubmit"] = "handleSubmit"
 
-            form.create_element(
+            form._create_element(
                 "input", key="name", props={"placeholder": "Enter name", "type": "text", "required": True}
             )
-            form.create_element("input", key="email", props={"placeholder": "Enter email", "type": "email"})
-            form.create_element("button", key="submit", props={"text": "Submit", "type": "submit"})
+            form._create_element("input", key="email", props={"placeholder": "Enter email", "type": "email"})
+            form._create_element("button", key="submit", props={"text": "Submit", "type": "submit"})
 
         assert len(builder.elements) == 1
         form_element = builder.elements[0]
@@ -632,7 +632,7 @@ class TestRouteLitBuilder:
         with builder.container(key="fruit-list", className="items") as list_builder:
             for item in items:
                 is_selected = builder.session_state["selected"] == item
-                list_builder.create_non_widget_element(
+                list_builder._create_non_widget_element(
                     "div",  # Use div instead of list_item
                     key=f"item-{item.lower()}",
                     props={"content": item, "className": f"item {'selected' if is_selected else ''}"},
@@ -654,14 +654,14 @@ class TestRouteLitBuilder:
         increment_id = "inc-btn"
         builder.request._ui_event = {"type": "click", "componentId": increment_id, "data": {}}
 
-        _button = builder.create_element(
+        _button = builder._create_element(
             "button", key=increment_id, props={"text": "Increment", "onClick": "handleIncrement"}
         )
         has_event, _ = builder._get_event_value(increment_id, "click")
 
         if has_event:
             builder.session_state["counter"] += 1
-            builder.create_non_widget_element(
+            builder._create_non_widget_element(
                 "text", key="counter-display", props={"content": f"Count: {builder.session_state['counter']}"}
             )
 
@@ -674,11 +674,11 @@ class TestRouteLitBuilder:
         builder.session_state["show_details"] = False
 
         # Always show main content
-        builder.create_non_widget_element("text", key="main", props={"content": "Main Content"})
+        builder._create_non_widget_element("text", key="main", props={"content": "Main Content"})
 
         # Conditionally show details
         if builder.session_state["show_details"]:
-            builder.create_non_widget_element("text", key="details", props={"content": "Detailed Info"})
+            builder._create_non_widget_element("text", key="details", props={"content": "Detailed Info"})
 
         assert len(builder.elements) == 1
         assert builder.elements[0].props["content"] == "Main Content"
@@ -687,9 +687,9 @@ class TestRouteLitBuilder:
         builder.session_state["show_details"] = True
         builder.elements = []  # Clear previous elements
 
-        builder.create_non_widget_element("text", key="main", props={"content": "Main Content"})
+        builder._create_non_widget_element("text", key="main", props={"content": "Main Content"})
         if builder.session_state["show_details"]:
-            builder.create_non_widget_element("text", key="details", props={"content": "Detailed Info"})
+            builder._create_non_widget_element("text", key="details", props={"content": "Detailed Info"})
 
         assert len(builder.elements) == 2
         assert builder.elements[1].props["content"] == "Detailed Info"
@@ -699,12 +699,12 @@ class TestRouteLitBuilder:
         main_frag = builder._fragment("main-fragment")
 
         with main_frag as mf:
-            mf.create_non_widget_element("text", key="main-text", props={"content": "Main Content"})
+            mf._create_non_widget_element("text", key="main-text", props={"content": "Main Content"})
 
             # Create nested fragment
             nested_frag = mf._fragment("nested-fragment")
             with nested_frag as nf:
-                nf.create_non_widget_element("text", key="nested-text", props={"content": "Nested Content"})
+                nf._create_non_widget_element("text", key="nested-text", props={"content": "Nested Content"})
 
         assert "main-fragment" in builder.fragments
         assert "nested-fragment" in main_frag.fragments
@@ -731,7 +731,7 @@ class TestRouteLitBuilder:
         fragment_element.props["aria-label"] = "Main Content"
 
         with main_frag as mf:
-            mf.create_element("div", "content", props={"text": "Fragment Content"})
+            mf._create_element("div", "content", props={"text": "Fragment Content"})
 
         # Assert props were correctly added
         assert fragment_element.name == "fragment"

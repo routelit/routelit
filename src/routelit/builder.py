@@ -13,18 +13,42 @@ from routelit.domain import (
 from routelit.exceptions import RerunException
 
 VerticalAlignment = Literal["top", "center", "bottom"]
+"""
+The vertical alignment of the elements.
+"""
 verticalAlignmentMap: Dict[VerticalAlignment, str] = {
     "top": "flex-start",
     "center": "center",
     "bottom": "flex-end",
 }
 ColumnsGap = Literal["none", "small", "medium", "large"]
+"""
+The gap between the columns.
+"""
 columnsGapMap: Dict[ColumnsGap, str] = {
     "none": "0",
     "small": "1rem",
     "medium": "2rem",
     "large": "3rem",
 }
+
+TextInputType = Literal[
+    "text",
+    "number",
+    "email",
+    "password",
+    "search",
+    "tel",
+    "url",
+    "date",
+    "time",
+    "datetime-local",
+    "month",
+    "week",
+]
+"""
+The type of the text input.
+"""
 
 
 class RouteLitBuilder:
@@ -169,30 +193,31 @@ class RouteLitBuilder:
                 return True, event["data"][attribute]
         return False, None
 
-    def append_element(self, element: RouteLitElement) -> None:
+    def _append_element(self, element: RouteLitElement) -> None:
         """
         Append an element to the current builder.
         Returns the index of the element in the builder.
+        Do not use this method directly, use the other methods instead, unless you are creating a custom element.
         """
         if self.active_child_builder:
-            self.active_child_builder.append_element(element)
+            self.active_child_builder._append_element(element)
         else:
             self.elements.append(element)
             if element.name == "fragment" and element.key != self.initial_fragment_id:
                 self.fragments[element.key] = element.address
 
-    def add_non_widget(self, element: RouteLitElement) -> RouteLitElement:
-        self.append_element(element)
+    def _add_non_widget(self, element: RouteLitElement) -> RouteLitElement:
+        self._append_element(element)
         if not self.active_child_builder:
             self.num_non_widget += 1
         else:
             self.active_child_builder.num_non_widget += 1
         return element
 
-    def add_widget(self, element: RouteLitElement):
-        self.append_element(element)
+    def _add_widget(self, element: RouteLitElement):
+        self._append_element(element)
 
-    def create_element(
+    def _create_element(
         self,
         name: str,
         key: str,
@@ -200,10 +225,10 @@ class RouteLitBuilder:
         children: Optional[List[RouteLitElement]] = None,
     ) -> RouteLitElement:
         element = RouteLitElement(key=key, name=name, props=props or {}, children=children)
-        self.add_widget(element)
+        self._add_widget(element)
         return element
 
-    def create_non_widget_element(
+    def _create_non_widget_element(
         self,
         name: str,
         key: str,
@@ -211,12 +236,12 @@ class RouteLitBuilder:
         address: Optional[Sequence[int]] = None,
     ) -> RouteLitElement:
         element = RouteLitElement(key=key, name=name, props=props or {}, address=address)
-        self.add_non_widget(element)
+        self._add_non_widget(element)
         return element
 
     def _fragment(self, key: Optional[str] = None) -> "RouteLitBuilder":
         key = key or self._new_text_id("fragment")
-        fragment = self.create_non_widget_element(
+        fragment = self._create_non_widget_element(
             name="fragment",
             key=key,
             props={"id": key},
@@ -229,7 +254,7 @@ class RouteLitBuilder:
         is_closed, _ = self._get_event_value(key, "close")
         if is_closed:
             self.rerun(scope="app")
-        dialog = self.create_non_widget_element(
+        dialog = self._create_non_widget_element(
             name="dialog",
             key=key,
             props={"id": key, "open": True, "closable": closable},
@@ -243,8 +268,21 @@ class RouteLitBuilder:
 
         Args:
             key (str): The key of the form.
+
+        Returns:
+            RouteLitBuilder: A builder for the form.
+
+        Example:
+        ```python
+        with rl.form("login"):
+            username = rl.text_input("Username")
+            password = rl.text_input("Password", type="password")
+            is_submitted = rl.button("Login", event_name="submit")
+            if is_submitted:
+                rl.text(f"Login successful for {username}")
+        ```
         """
-        form = self.create_non_widget_element(
+        form = self._create_non_widget_element(
             name="form",
             key=key,
             props={"id": key},
@@ -261,17 +299,24 @@ class RouteLitBuilder:
         **kwargs,
     ) -> RouteLitElement:
         """
-        Creates a link component.
+        Creates a link component. Use this to navigate to a different page.
 
         Args:
             href (str): The href of the link.
             text (str): The text of the link.
-            replace (bool): Whether to replace the current page.
-            is_external (bool): Whether the link is external.
+            replace (bool): Whether to replace the current page from the history.
+            is_external (bool): Whether the link is external to the current app.
             key (Optional[str]): The key of the link.
             kwargs (Dict[str, Any]): The keyword arguments to pass to the link.
+
+        Example:
+        ```python
+        rl.link("/signup", text="Signup")
+        rl.link("/login", text="Login", replace=True)
+        rl.link("https://www.google.com", text="Google", is_external=True)
+        ```
         """
-        new_element = self.create_non_widget_element(
+        new_element = self._create_non_widget_element(
             name="link",
             key=key or self._new_text_id("link"),
             props={
@@ -294,7 +339,7 @@ class RouteLitBuilder:
         **kwargs,
     ) -> "RouteLitBuilder":
         """
-        Creates a link area component.
+        Creates a link area component. Use this element which is a container of other elements.
 
         Args:
             href (str): The href of the link.
@@ -303,6 +348,14 @@ class RouteLitBuilder:
             key (Optional[str]): The key of the link area.
             className (Optional[str]): The class name of the link area.
             kwargs (Dict[str, Any]): The keyword arguments to pass to the link area.
+
+        Example:
+        ```python
+        with rl.link_area("https://www.google.com"):
+            with rl.flex(direction="row", gap="small"):
+                rl.image("https://www.google.com/favicon.ico", width="24px", height="24px")
+                rl.text("Google")
+        ```
         """
         link_element = self.link(
             href,
@@ -321,8 +374,15 @@ class RouteLitBuilder:
         Args:
             key (Optional[str]): The key of the container.
             height (Optional[str]): The height of the container.
+            kwargs (Dict[str, Any]): The keyword arguments to pass to the container.
+
+        Example:
+        ```python
+        with rl.container(height="100px"):
+            rl.text("Container")
+        ```
         """
-        container = self.create_non_widget_element(
+        container = self._create_non_widget_element(
             name="container",
             key=key or self._new_text_id("container"),
             props={"style": {"height": height}, **kwargs},
@@ -337,8 +397,13 @@ class RouteLitBuilder:
             body (str): The body of the markdown.
             allow_unsafe_html (bool): Whether to allow unsafe HTML.
             key (Optional[str]): The key of the markdown.
+
+        Example:
+        ```python
+        rl.markdown("**Bold** *italic* [link](https://www.google.com)")
+        ```
         """
-        self.create_non_widget_element(
+        self._create_non_widget_element(
             name="markdown",
             key=key or self._new_text_id("markdown"),
             props={"body": body, "allowUnsafeHtml": allow_unsafe_html, **kwargs},
@@ -351,6 +416,11 @@ class RouteLitBuilder:
         Args:
             body (str): The body of the text.
             key (Optional[str]): The key of the text.
+
+        Example:
+        ```python
+        rl.text("Text")
+        ```
         """
         self.markdown(body, allow_unsafe_html=False, key=key, **kwargs)
 
@@ -361,8 +431,13 @@ class RouteLitBuilder:
         Args:
             body (str): The body of the title.
             key (Optional[str]): The key of the title.
+
+        Example:
+        ```python
+        rl.title("Title")
+        ```
         """
-        self.create_non_widget_element(
+        self._create_non_widget_element(
             name="title",
             key=key or self._new_text_id("title"),
             props={"children": body, **kwargs},
@@ -375,8 +450,13 @@ class RouteLitBuilder:
         Args:
             body (str): The body of the header.
             key (Optional[str]): The key of the header.
+
+        Example:
+        ```python
+        rl.header("Header")
+        ```
         """
-        self.create_non_widget_element(
+        self._create_non_widget_element(
             name="header",
             key=key or self._new_text_id("header"),
             props={"children": body, **kwargs},
@@ -389,8 +469,13 @@ class RouteLitBuilder:
         Args:
             body (str): The body of the subheader.
             key (Optional[str]): The key of the subheader.
+
+        Example:
+        ```python
+        rl.subheader("Subheader")
+        ```
         """
-        self.create_non_widget_element(
+        self._create_non_widget_element(
             name="subheader",
             key=key or self._new_text_id("subheader"),
             props={"children": body, **kwargs},
@@ -404,8 +489,13 @@ class RouteLitBuilder:
             src (str): The source of the image.
             key (Optional[str]): The key of the image.
             kwargs (Dict[str, Any]): The keyword arguments to pass to the image.
+
+        Example:
+        ```python
+        rl.image("https://www.google.com/favicon.ico", alt="Google", width="24px", height="24px")
+        ```
         """
-        self.create_non_widget_element(
+        self._create_non_widget_element(
             name="image",
             key=key or self._new_text_id("image"),
             props={"src": src, **kwargs},
@@ -438,7 +528,7 @@ class RouteLitBuilder:
         ```
         """
         new_key = key or self._new_widget_id("expander", title)
-        new_element = self.create_element(
+        new_element = self._create_element(
             name="expander",
             key=new_key,
             props={"title": title, "open": open},
@@ -486,7 +576,7 @@ class RouteLitBuilder:
         if isinstance(spec, int):
             spec = [1] * spec
         container_key = key or self._new_text_id("container")
-        container = self.create_non_widget_element(
+        container = self._create_non_widget_element(
             name="container",
             key=container_key,
             props={
@@ -501,7 +591,7 @@ class RouteLitBuilder:
         with container_builder:
             element_builders = []
             for column_spec in spec:
-                column = self.create_non_widget_element(
+                column = self._create_non_widget_element(
                     name="container",
                     key=self._new_text_id("col"),
                     props={"style": {"flex": column_spec}},
@@ -523,7 +613,7 @@ class RouteLitBuilder:
         """
         Creates a flex container with the given direction, wrap, justify content, align items, align content, gap, and key.
         """
-        container = self.create_non_widget_element(
+        container = self._create_non_widget_element(
             name="flex",
             key=key or self._new_text_id("flex"),
             props={
@@ -542,19 +632,32 @@ class RouteLitBuilder:
         self,
         text: str,
         *,
-        event_name: Optional[str] = "click",
+        event_name: Optional[Literal["click", "submit"]] = "click",
         key: Optional[str] = None,
         on_click: Optional[Callable[[], None]] = None,
         **kwargs,
     ) -> bool:
         """
         Creates a button with the given text, event name, key, on click, and keyword arguments.
+
+        Args:
+            text (str): The text of the button.
+            event_name (Optional[Literal["click", "submit"]]): The name of the event to listen for.
+            key (Optional[str]): The key of the button.
+            on_click (Optional[Callable[[], None]]): The function to call when the button is clicked.
+            kwargs (Dict[str, Any]): The keyword arguments to pass to the button.
+
+        Returns:
+            bool: Whether the button was clicked.
+
         Example:
         ```python
-        rl.button("Click me", on_click=lambda: print("Button clicked"))
+        is_clicked = rl.button("Click me", on_click=lambda: print("Button clicked"))
+        if is_clicked:
+            rl.text("Button clicked")
         ```
         """
-        button = self.create_element(
+        button = self._create_element(
             name="button",
             key=key or self._new_widget_id("button", text),
             props={"text": text, "eventName": event_name, **kwargs},
@@ -583,7 +686,7 @@ class RouteLitBuilder:
             self.session_state[component_id] = new_value
             if on_change:
                 on_change(new_value)
-        self.create_element(
+        self._create_element(
             name=element_type,
             key=component_id,
             props={
@@ -598,20 +701,7 @@ class RouteLitBuilder:
         self,
         label: str,
         *,
-        type: Literal[
-            "text",
-            "number",
-            "email",
-            "password",
-            "search",
-            "tel",
-            "url",
-            "date",
-            "time",
-            "datetime-local",
-            "month",
-            "week",
-        ] = "text",
+        type: TextInputType = "text",
         value: Optional[str] = None,
         key: Optional[str] = None,
         on_change: Optional[Callable[[str], None]] = None,
@@ -621,19 +711,20 @@ class RouteLitBuilder:
         Creates a text input with the given label and value.
 
         Args:
-            - label: The label of the text input.
-            - type: The type of the text input: "text", "number", "email", "password", "search", "tel", "url", "date", "time", "datetime-local", "month", "week".
-            - value: The value of the text input.
-            - key: The key of the text input.
-            - on_change: The function to call when the value changes. The function will be called with the new value.
-            - kwargs: The keyword arguments to pass to the text input.
+            label (str): The label of the text input.
+            type (TextInputType): The type of the text input.
+            value (Optional[str]): The value of the text input.
+            key (Optional[str]): The key of the text input.
+            on_change (Optional[Callable[[str], None]]): The function to call when the value changes. The function will be called with the new value.
+            kwargs (Dict[str, Any]): The keyword arguments to pass to the text input.
 
         Returns:
             str: The text value of the text input.
 
         Example:
         ```python
-        rl.text_input("Name", value="John", on_change=lambda value: print(f"Name changed to {value}"))
+        name = rl.text_input("Name", value="John", on_change=lambda value: print(f"Name changed to {value}"))
+        rl.text(f"Name is {name}")
         ```
         """
         return self._x_input("text-input", label, value, key, on_change, type=type, **kwargs)
@@ -651,14 +742,20 @@ class RouteLitBuilder:
         Creates a textarea with the given label and value.
 
         Args:
-            - label: The label of the textarea.
-            - value: The value of the textarea.
-            - key: The key of the textarea.
-            - on_change: The function to call when the value changes. The function will be called with the new value.
-            - kwargs: The keyword arguments to pass to the textarea.
+            label (str): The label of the textarea.
+            value (Optional[str]): The value of the textarea.
+            key (Optional[str]): The key of the textarea.
+            on_change (Optional[Callable[[str], None]]): The function to call when the value changes. The function will be called with the new value.
+            kwargs (Dict[str, Any]): The keyword arguments to pass to the textarea.
 
         Returns:
             str: The text value of the textarea.
+
+        Example:
+        ```python
+        text = rl.textarea("Text", value="Hello, world!", on_change=lambda value: print(f"Text changed to {value}"))
+        rl.text(f"Text is {text}")
+        ```
         """
         return self._x_input("textarea", label, value, key, on_change, **kwargs)
 
@@ -677,18 +774,24 @@ class RouteLitBuilder:
         Creates a radio group with the given label and options.
 
         Args:
-            - label: The label of the radio group.
-            - options: The options of the radio group. Each option can be a string or a dictionary with the following keys:
+            label (str): The label of the radio group.
+            options (Sequence[Dict[str, Any] | str]): The options of the radio group. Each option can be a string or a dictionary with the following keys:
                 - label: The label of the option.
                 - value: The value of the option.
                 - caption: The caption of the option.
                 - disabled: Whether the option is disabled.
-            - value: The value of the radio group.
-            - key: The key of the radio group.
-            - on_change: The function to call when the value changes. The function will be called with the new value.
-            - kwargs: The keyword arguments to pass to the radio group.
+            value (str | int | None): The value of the radio group.
+            key (str | None): The key of the radio group.
+            on_change (Callable[[str | int | None], None] | None): The function to call when the value changes. The function will be called with the new value.
+            kwargs (Dict[str, Any]): The keyword arguments to pass to the radio group.
         Returns:
             str | int | None: The value of the selected radio option.
+
+        Example:
+        ```python
+        value = rl.radio("Radio", options=["Option 1", {"label": "Option 2", "value": "option2"}, {"label": "Option 3", "value": "option3", "disabled": True}], value="Option 1", on_change=lambda value: print(f"Radio value changed to {value}"))
+        rl.text(f"Radio value is {value}")
+        ```
         """
         return self._x_input(
             "radio", label, value, key, on_change, options=options, flexDirection=flex_direction, **kwargs
@@ -708,18 +811,24 @@ class RouteLitBuilder:
         Creates a select dropdown with the given label and options.
 
         Args:
-            - label: The label of the select dropdown.
-            - options: The options of the select dropdown. Each option can be a string or a dictionary with the following keys: (label, value, disabled)
+            label (str): The label of the select dropdown.
+            options (Sequence[Dict[str, Any] | str]): The options of the select dropdown. Each option can be a string or a dictionary with the following keys: (label, value, disabled)
                 - label: The label of the option.
                 - value: The value of the option.
                 - disabled: Whether the option is disabled.
-            - value: The value of the select dropdown.
-            - key: The key of the select dropdown.
-            - on_change: The function to call when the value changes. The function will be called with the new value.
-            - kwargs: The keyword arguments to pass to the select dropdown.
+            value (str | int | None): The value of the select dropdown.
+            key (str | None): The key of the select dropdown.
+            on_change (Callable[[str | int | None], None] | None): The function to call when the value changes. The function will be called with the new value.
+            kwargs (Dict[str, Any]): The keyword arguments to pass to the select dropdown.
 
         Returns:
             Any: The value of the select dropdown.
+
+        Example:
+        ```python
+        value = rl.select("Select", options=["Option 1", {"label": "Option 2", "value": "option2"}, {"label": "Option 3", "value": "option3", "disabled": True}], value="Option 1", on_change=lambda value: print(f"Select value changed to {value}"))
+        rl.text(f"Select value is {value}")
+        ```
         """
         return self._x_input("select", label, value, key, on_change, options=options, **kwargs)
 
@@ -741,8 +850,15 @@ class RouteLitBuilder:
             key (str | None): The key of the checkbox.
             on_change (Callable[[bool], None] | None): The function to call when the value changes.
             kwargs (Dict[str, Any]): The keyword arguments to pass to the checkbox.
+
         Returns:
             bool: Whether the checkbox is checked.
+
+        Example:
+        ```python
+        is_checked = rl.checkbox("Check me", on_change=lambda checked: print(f"Checkbox is {'checked' if checked else 'unchecked'}"))
+        if is_checked:
+            rl.text("Checkbox is checked")
         """
         return self._x_input("checkbox", label, checked, key, on_change, value_attribute="checked", **kwargs)
 
@@ -770,6 +886,12 @@ class RouteLitBuilder:
             kwargs (Dict[str, Any]): The keyword arguments to pass to the checkbox group.
         Returns:
             List[str | int]: The value of the checkbox group.
+
+        Example:
+        ```python
+        selected_options = rl.checkbox_group("Checkbox Group", options=["Option 1", {"label": "Option 2", "value": "option2"}, {"label": "Option 3", "value": "option3", "disabled": True}], value=["Option 1"], on_change=lambda value: print(f"Checkbox group value changed to {value}"))
+        rl.text(f"Selected options: {', '.join(selected_options) if selected_options else 'None'}")
+        ```
         """
         return self._x_input(
             "checkbox-group", label, value, key, on_change, options=options, flexDirection=flex_direction, **kwargs
@@ -782,6 +904,16 @@ class RouteLitBuilder:
         Args:
             scope (RerunType): The scope of the rerun. "auto" will rerun the app or the fragment depending on the context, "app" will rerun the entire app
             clear_event (bool): Whether to clear the event.
+
+        Example:
+        ```python
+        counter = rl.session_state.get("counter", 0)
+        rl.text(f"Counter is {counter}")
+        should_increase =rl.button("Increment")
+        if should_increase:
+            rl.session_state["counter"] = counter + 1
+            rl.rerun()
+        ```
         """
         self.elements.clear()
         if clear_event:
@@ -802,7 +934,7 @@ class RouteLitBuilder:
             page_description (str | None): The description of the page.
         """
         self.head = Head(title=page_title, description=page_description)
-        new_element = self.create_non_widget_element(
+        new_element = self._create_non_widget_element(
             name="head",
             key="__head__",
             props={

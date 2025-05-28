@@ -39,6 +39,39 @@ class RouteLit:
         self.fragment_registry: Dict[str, Callable[[RouteLitBuilder], Any]] = {}
 
     def response(self, view_fn: ViewFn, request: RouteLitRequest, **kwargs) -> Union[RouteLitResponse, Dict[str, Any]]:
+        """Handle the request and return the response.
+
+        Args:
+            view_fn (ViewFn): (Callable[[RouteLitBuilder], Any]) The view function to handle the request.
+            request (RouteLitRequest): The request object.
+            **kwargs (Dict[str, Any]): Additional keyword arguments.
+
+        Returns:
+            RouteLitResponse | Dict[str, Any]:
+                The response object.
+                where Dict[str, Any] is a dictionary that contains the following keys:
+                actions (List[Action]), target (Literal["app", "fragment"])
+
+        Example:
+        ```python
+        from routelit import RouteLit, RouteLitBuilder
+
+        rl = RouteLit()
+
+        def my_view(rl: RouteLitBuilder):
+            rl.text("Hello, world!")
+
+        request = ...
+        response = rl.response(my_view, request)
+
+        # example with dependency
+        def my_view(rl: RouteLitBuilder, name: str):
+            rl.text(f"Hello, {name}!")
+
+        request = ...
+        response = rl.response(my_view, request, name="John")
+        ```
+        """
         if request.method == "GET":
             return self.handle_get_request(view_fn, request, **kwargs)
         elif request.method == "POST":
@@ -191,6 +224,7 @@ class RouteLit:
         """
         Render the vite assets for BuilderClass components.
         This function will return a list of ViteComponentsAssets.
+        This should be called by the web framework to render the assets.
         """
         assets = []
         for static_path in self.BuilderClass.get_client_resource_paths():
@@ -227,6 +261,27 @@ class RouteLit:
         return args, kwargs
 
     def fragment(self, key: Optional[str] = None):
+        """
+        Decorator to register a fragment.
+
+        Args:
+            key: The key to register the fragment with.
+
+        Returns:
+            The decorator function.
+
+        Example:
+        ```python
+        from routelit import RouteLit, RouteLitBuilder
+
+        rl = RouteLit()
+
+        @rl.fragment()
+        def my_fragment(rl: RouteLitBuilder):
+            rl.text("Hello, world!")
+        ```
+        """
+
         def decorator_fragment(view_fn: ViewFn):
             fragment_key = key or view_fn.__name__
 
@@ -244,6 +299,26 @@ class RouteLit:
         return decorator_fragment
 
     def dialog(self, key: Optional[str] = None):
+        """Decorator to register a dialog.
+
+        Args:
+            key (Optional[str]): The key to register the dialog with.
+
+        Returns:
+            The decorator function.
+
+        Example:
+        ```python
+        from routelit import RouteLit, RouteLitBuilder
+
+        rl = RouteLit()
+
+        @rl.dialog()
+        def my_dialog(rl: RouteLitBuilder):
+            rl.text("Hello, world!")
+        ```
+        """
+
         def decorator_dialog(view_fn: ViewFn):
             fragment_key = key or view_fn.__name__
             dialog_key = f"{fragment_key}-dialog"
