@@ -1,15 +1,21 @@
 import json
 from importlib import resources
+from typing import Any, Dict
 
 from .domain import ViteComponentsAssets
 
 
-def get_vite_manifest(package_name: str):
-    manifest_path = resources.files(package_name).joinpath("static", ".vite", "manifest.json")
+def get_vite_manifest(package_name: str) -> Dict[str, Any]:
+    try:
+        manifest_path = resources.files(package_name) / "static" / ".vite" / "manifest.json"
 
-    if manifest_path.exists():
-        with open(manifest_path) as f:
-            return json.load(f)
+        if manifest_path.is_file():
+            with manifest_path.open() as f:
+                manifest_data = json.load(f)
+                if isinstance(manifest_data, dict):
+                    return manifest_data
+    except (FileNotFoundError, AttributeError):
+        pass
     return {}
 
 

@@ -1,6 +1,5 @@
 import json
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from typing import (
     Any,
@@ -34,7 +33,7 @@ class RouteLitEvent(TypedDict):
     type: Literal["click", "changed", "navigate"]
     componentId: str
     data: Dict[str, Any]
-    formId: Optional[str] = None
+    formId: Optional[str]
 
 
 class SessionKeys(NamedTuple):
@@ -47,7 +46,7 @@ class SessionKeys(NamedTuple):
     fragment_addresses_key: str
     """
       Key to the addresses of the fragments in the session state.
-      The address is a sequence of indices to the array tree of elements in the session state
+      The address is a List of indices to the array tree of elements in the session state
       from the root to the target element.
     """
     fragment_params_key: str
@@ -66,14 +65,14 @@ class RouteLitElement:
     props: Dict[str, Any]
     key: str
     children: Optional[List["RouteLitElement"]] = None
-    address: Optional[Sequence[int]] = None
+    address: Optional[List[int]] = None
 
 
 @dataclass
 class Action:
-    address: Sequence[int]
+    address: List[int]
     """
-      (Sequence[int]) The address is the sequence of indices to the array tree of elements in the session state
+      (List[int]) The address is the list of indices to the array tree of elements in the session state
       from the root to the target element.
     """
 
@@ -126,7 +125,7 @@ class RouteLitRequest(ABC):
     This class should be implemented by the web framework you want to integrate with.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._ui_event = self._get_ui_event()
         self._fragment_id = self._get_fragment_id()
 
@@ -143,15 +142,15 @@ class RouteLitRequest(ABC):
         pass
 
     @abstractmethod
-    def get_json(self) -> Optional[Any]:
+    def get_json(self) -> Optional[Dict[str, Any]]:
         pass
 
     def _get_internal_referrer(self) -> Optional[str]:
         return self.get_headers().get("X-Referer") or self.get_referrer()
 
     def _get_ui_event(self) -> Optional[RouteLitEvent]:
-        if self.is_json():
-            return self.get_json().get("uiEvent")
+        if self.is_json() and (json_data := self.get_json()) and isinstance(json_data, dict):
+            return json_data.get("uiEvent")
         else:
             return None
 
@@ -159,7 +158,7 @@ class RouteLitRequest(ABC):
     def ui_event(self) -> Optional[RouteLitEvent]:
         return self._ui_event
 
-    def clear_event(self):
+    def clear_event(self) -> None:
         self._ui_event = None
 
     @abstractmethod
@@ -187,13 +186,16 @@ class RouteLitRequest(ABC):
     def method(self) -> str:
         pass
 
-    def clear_fragment_id(self):
+    def clear_fragment_id(self) -> None:
         self._fragment_id = None
 
     def _get_fragment_id(self) -> Optional[str]:
         if not self.is_json():
             return None
-        return self.get_json().get("fragmentId")
+        json_data = self.get_json()
+        if isinstance(json_data, dict):
+            return json_data.get("fragmentId")
+        return None
 
     @property
     def fragment_id(self) -> Optional[str]:

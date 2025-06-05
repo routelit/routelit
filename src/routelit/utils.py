@@ -143,9 +143,13 @@ def compare_elements(
 
 
 def get_elements_at_address(elements: List[RouteLitElement], address: List[int]) -> List[RouteLitElement]:
+    _elements = elements
     for idx in address:
-        elements = elements[idx].children
-    return elements
+        children = _elements[idx].children
+        if children is None:
+            raise ValueError(f"Element at index {idx} has no children")
+        _elements = children
+    return _elements
 
 
 def set_elements_at_address(
@@ -160,5 +164,10 @@ def set_elements_at_address(
             el_or_els = el_or_els.children[idx]
         else:
             raise ValueError(f"Cannot set object at address {address} from object of type {type(elements)}")
+
+    # At this point, el_or_els should be a RouteLitElement
+    if not isinstance(el_or_els, RouteLitElement):
+        raise TypeError(f"Expected RouteLitElement at address {address}, got {type(el_or_els)}")
+
     el_or_els.children = value
     return new_elements

@@ -1,6 +1,6 @@
 import hashlib
-from collections.abc import MutableMapping, Sequence
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
+from collections.abc import MutableMapping
+from typing import Any, Callable, ClassVar, Dict, List, Literal, Optional, Tuple
 
 from routelit.domain import (
     AssetTarget,
@@ -52,18 +52,18 @@ The type of the text input.
 
 
 class RouteLitBuilder:
-    static_assets_targets: Sequence[AssetTarget] = []
+    static_assets_targets: ClassVar[List[AssetTarget]] = []
 
     def __init__(
         self,
         request: RouteLitRequest,
         initial_fragment_id: Optional[str] = None,
-        fragments: Optional[MutableMapping[str, Sequence[int]]] = None,
+        fragments: Optional[MutableMapping[str, List[int]]] = None,
         prefix: Optional[str] = None,
         session_state: Optional[MutableMapping[str, Any]] = None,
         parent_element: Optional[RouteLitElement] = None,
         parent_builder: Optional["RouteLitBuilder"] = None,
-        address: Optional[Sequence[int]] = None,
+        address: Optional[List[int]] = None,
     ):
         self.request = request
         self.initial_fragment_id = initial_fragment_id
@@ -78,17 +78,17 @@ class RouteLitBuilder:
         self.elements: List[RouteLitElement] = []
         # self.elements_no_fragments: List[RouteLitElement] = []
         self.num_non_widget = 0
-        self.session_state = session_state or {}
+        self.session_state: MutableMapping[str, Any] = session_state or {}
         self.parent_element = parent_element
         self.parent_builder = parent_builder
         if parent_element:
-            self.parent_element.children = self.elements
+            parent_element.children = self.elements
         self.active_child_builder: Optional[RouteLitBuilder] = None
         self._prev_active_child_builder: Optional[RouteLitBuilder] = None
         if prefix is None:
             self._on_init()
 
-    def _on_init(self):
+    def _on_init(self) -> None:
         pass
 
     def get_request(self) -> RouteLitRequest:
@@ -98,7 +98,7 @@ class RouteLitBuilder:
         # Simplify to just use the current prefix which is already properly initialized
         return self.prefix
 
-    def _get_next_address(self) -> Sequence[int]:
+    def _get_next_address(self) -> List[int]:
         if self.active_child_builder:
             return [
                 *(self.active_child_builder.address or []),
@@ -107,7 +107,7 @@ class RouteLitBuilder:
         else:
             return [*(self.address or []), len(self.elements)]
 
-    def _get_last_address(self) -> Sequence[int]:
+    def _get_last_address(self) -> List[int]:
         if self.active_child_builder:
             return [
                 *(self.active_child_builder.address or []),
@@ -172,7 +172,7 @@ class RouteLitBuilder:
             and (events := self.session_state.get(f"__events_{form_id}", {}))
             and component_id in events
         ):
-            _event = events[component_id]
+            _event: RouteLitEvent = events[component_id]
             events.pop(component_id, None)
             self.session_state[f"__events_{form_id}"] = events
             return _event
@@ -185,12 +185,11 @@ class RouteLitBuilder:
         Returns a tuple of (has_event, event_data).
         """
         event = self._maybe_get_event(component_id)
-        has_event = event and event.get("type") == event_type
-        if has_event:
+        if event is not None and event.get("type") == event_type:
             if attribute is None:
                 return True, event["data"]
             else:
-                return True, event["data"][attribute]
+                return True, event["data"].get(attribute)
         return False, None
 
     def _append_element(self, element: RouteLitElement) -> None:
@@ -204,7 +203,9 @@ class RouteLitBuilder:
         else:
             self.elements.append(element)
             if element.name == "fragment" and element.key != self.initial_fragment_id:
-                self.fragments[element.key] = element.address
+                element_address = element.address
+                if element_address is not None:
+                    self.fragments[element.key] = element_address
 
     def _add_non_widget(self, element: RouteLitElement) -> RouteLitElement:
         self._append_element(element)
@@ -214,7 +215,7 @@ class RouteLitBuilder:
             self.active_child_builder.num_non_widget += 1
         return element
 
-    def _add_widget(self, element: RouteLitElement):
+    def _add_widget(self, element: RouteLitElement) -> None:
         self._append_element(element)
 
     def _create_element(
@@ -233,7 +234,7 @@ class RouteLitBuilder:
         name: str,
         key: str,
         props: Optional[Dict[str, Any]] = None,
-        address: Optional[Sequence[int]] = None,
+        address: Optional[List[int]] = None,
     ) -> RouteLitElement:
         element = RouteLitElement(key=key, name=name, props=props or {}, address=address)
         self._add_non_widget(element)
@@ -296,7 +297,7 @@ class RouteLitBuilder:
         replace: bool = False,
         is_external: bool = False,
         key: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> RouteLitElement:
         """
         Creates a link component. Use this to navigate to a different page.
@@ -336,7 +337,7 @@ class RouteLitBuilder:
         is_external: bool = False,
         key: Optional[str] = None,
         className: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> "RouteLitBuilder":
         """
         Creates a link area component. Use this element which is a container of other elements.
@@ -367,7 +368,7 @@ class RouteLitBuilder:
         )
         return self._build_nested_builder(link_element)
 
-    def container(self, key: Optional[str] = None, height: Optional[str] = None, **kwargs) -> "RouteLitBuilder":
+    def container(self, key: Optional[str] = None, height: Optional[str] = None, **kwargs: Any) -> "RouteLitBuilder":
         """
         Creates a container component.
 
@@ -389,7 +390,7 @@ class RouteLitBuilder:
         )
         return self._build_nested_builder(container)
 
-    def markdown(self, body: str, *, allow_unsafe_html: bool = False, key: Optional[str] = None, **kwargs):
+    def markdown(self, body: str, *, allow_unsafe_html: bool = False, key: Optional[str] = None, **kwargs: Any) -> None:
         """
         Creates a markdown component.
 
@@ -409,7 +410,7 @@ class RouteLitBuilder:
             props={"body": body, "allowUnsafeHtml": allow_unsafe_html, **kwargs},
         )
 
-    def text(self, body: str, key: Optional[str] = None, **kwargs):
+    def text(self, body: str, key: Optional[str] = None, **kwargs: Any) -> None:
         """
         Creates a text component.
 
@@ -424,7 +425,7 @@ class RouteLitBuilder:
         """
         self.markdown(body, allow_unsafe_html=False, key=key, **kwargs)
 
-    def title(self, body: str, key: Optional[str] = None, **kwargs):
+    def title(self, body: str, key: Optional[str] = None, **kwargs: Any) -> None:
         """
         Creates a title component.
 
@@ -440,10 +441,10 @@ class RouteLitBuilder:
         self._create_non_widget_element(
             name="title",
             key=key or self._new_text_id("title"),
-            props={"children": body, **kwargs},
+            props={"body": body, **kwargs},
         )
 
-    def header(self, body: str, key: Optional[str] = None, **kwargs):
+    def header(self, body: str, key: Optional[str] = None, **kwargs: Any) -> None:
         """
         Creates a header component.
 
@@ -459,10 +460,10 @@ class RouteLitBuilder:
         self._create_non_widget_element(
             name="header",
             key=key or self._new_text_id("header"),
-            props={"children": body, **kwargs},
+            props={"body": body, **kwargs},
         )
 
-    def subheader(self, body: str, key: Optional[str] = None, **kwargs):
+    def subheader(self, body: str, key: Optional[str] = None, **kwargs: Any) -> None:
         """
         Creates a subheader component.
 
@@ -478,10 +479,10 @@ class RouteLitBuilder:
         self._create_non_widget_element(
             name="subheader",
             key=key or self._new_text_id("subheader"),
-            props={"children": body, **kwargs},
+            props={"body": body, **kwargs},
         )
 
-    def image(self, src: str, *, key: Optional[str] = None, **kwargs):
+    def image(self, src: str, *, key: Optional[str] = None, **kwargs: Any) -> None:
         """
         Creates an image component.
 
@@ -608,7 +609,7 @@ class RouteLitBuilder:
         align_content: Literal["normal", "start", "end", "center", "between", "around", "evenly"] = "normal",
         gap: Optional[str] = None,
         key: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> "RouteLitBuilder":
         """
         Creates a flex container with the given direction, wrap, justify content, align items, align content, gap, and key.
@@ -632,10 +633,10 @@ class RouteLitBuilder:
         self,
         text: str,
         *,
-        event_name: Optional[Literal["click", "submit"]] = "click",
+        event_name: Literal["click", "submit"] = "click",
         key: Optional[str] = None,
         on_click: Optional[Callable[[], None]] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> bool:
         """
         Creates a button with the given text, event name, key, on click, and keyword arguments.
@@ -669,20 +670,20 @@ class RouteLitBuilder:
 
     def _x_input(
         self,
-        element_type: Literal["text-input", "textarea"],
+        element_type: str,
         label: str,
         value: Any | None = None,
         key: str | None = None,
-        on_change: Callable[[str], None] | None = None,
-        event_name: Optional[str] = "change",
-        value_attribute: Optional[str] = "value",
-        **kwargs,
-    ) -> Any | None:
+        on_change: Callable[[Any], None] | None = None,
+        event_name: str = "change",
+        value_attribute: str = "value",
+        **kwargs: Any,
+    ) -> str:
         component_id = key or self._new_widget_id(element_type, label)
-        new_value = self.session_state.get(component_id, value)
+        new_value = self.session_state.get(component_id, value) or ""
         has_changed, event_value = self._get_event_value(component_id, event_name, value_attribute)
         if has_changed:
-            new_value = event_value
+            new_value = event_value or ""
             self.session_state[component_id] = new_value
             if on_change:
                 on_change(new_value)
@@ -697,6 +698,36 @@ class RouteLitBuilder:
         )
         return new_value
 
+    def _x_radio_select(
+        self,
+        element_type: Literal["radio", "select"],
+        label: str,
+        options: List[Dict[str, Any] | str],
+        value: Any | None = None,
+        key: str | None = None,
+        on_change: Callable[[Any], None] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        component_id = key or self._new_widget_id(element_type, label)
+        new_value = self.session_state.get(component_id, value)
+        has_changed, event_value = self._get_event_value(component_id, "change", "value")
+        if has_changed:
+            new_value = event_value
+            self.session_state[component_id] = new_value
+            if on_change:
+                on_change(new_value)
+        self._create_element(
+            name=element_type,
+            key=component_id,
+            props={
+                "label": label,
+                "value": new_value,
+                "options": options,
+                **kwargs,
+            },
+        )
+        return new_value
+
     def text_input(
         self,
         label: str,
@@ -705,7 +736,7 @@ class RouteLitBuilder:
         value: Optional[str] = None,
         key: Optional[str] = None,
         on_change: Optional[Callable[[str], None]] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> str:
         """
         Creates a text input with the given label and value.
@@ -736,7 +767,7 @@ class RouteLitBuilder:
         value: Optional[str] = None,
         key: Optional[str] = None,
         on_change: Optional[Callable[[str], None]] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> str:
         """
         Creates a textarea with the given label and value.
@@ -762,20 +793,20 @@ class RouteLitBuilder:
     def radio(
         self,
         label: str,
-        options: Sequence[Dict[str, Any] | str],
+        options: List[Dict[str, Any] | str],
         *,
-        value: str | int | None = None,
-        key: str | None = None,
-        on_change: Callable[[str | int | None], None] | None = None,
+        value: Optional[Any] = None,
+        key: Optional[str] = None,
+        on_change: Optional[Callable[[Any], None]] = None,
         flex_direction: Literal["row", "col"] = "col",
-        **kwargs,
-    ) -> str | int | None:
+        **kwargs: Any,
+    ) -> Any:
         """
         Creates a radio group with the given label and options.
 
         Args:
             label (str): The label of the radio group.
-            options (Sequence[Dict[str, Any] | str]): The options of the radio group. Each option can be a string or a dictionary with the following keys:
+            options (List[Dict[str, Any] | str]): The options of the radio group. Each option can be a string or a dictionary with the following keys:
                 - label: The label of the option.
                 - value: The value of the option.
                 - caption: The caption of the option.
@@ -793,26 +824,33 @@ class RouteLitBuilder:
         rl.text(f"Radio value is {value}")
         ```
         """
-        return self._x_input(
-            "radio", label, value, key, on_change, options=options, flexDirection=flex_direction, **kwargs
+        return self._x_radio_select(
+            "radio",
+            label,
+            options,
+            value,
+            key,
+            on_change,
+            flexDirection=flex_direction,
+            **kwargs,
         )
 
     def select(
         self,
         label: str,
-        options: Sequence[Dict[str, Any] | str],
+        options: List[Dict[str, Any] | str],
         *,
-        value: str | int | None = None,
-        key: str | None = None,
-        on_change: Callable[[str | int | None], None] | None = None,
-        **kwargs,
+        value: Optional[Any] = None,
+        key: Optional[str] = None,
+        on_change: Optional[Callable[[Any], None]] = None,
+        **kwargs: Any,
     ) -> Any:
         """
         Creates a select dropdown with the given label and options.
 
         Args:
             label (str): The label of the select dropdown.
-            options (Sequence[Dict[str, Any] | str]): The options of the select dropdown. Each option can be a string or a dictionary with the following keys: (label, value, disabled)
+            options (List[Dict[str, Any] | str]): The options of the select dropdown. Each option can be a string or a dictionary with the following keys: (label, value, disabled)
                 - label: The label of the option.
                 - value: The value of the option.
                 - disabled: Whether the option is disabled.
@@ -830,16 +868,16 @@ class RouteLitBuilder:
         rl.text(f"Select value is {value}")
         ```
         """
-        return self._x_input("select", label, value, key, on_change, options=options, **kwargs)
+        return self._x_radio_select("select", label, options, value, key, on_change, **kwargs)
 
     def checkbox(
         self,
         label: str,
         *,
         checked: bool = False,
-        key: str | None = None,
-        on_change: Callable[[bool], None] | None = None,
-        **kwargs,
+        key: Optional[str] = None,
+        on_change: Optional[Callable[[bool], None]] = None,
+        **kwargs: Any,
     ) -> bool:
         """
         Creates a checkbox with the given label and value.
@@ -860,25 +898,44 @@ class RouteLitBuilder:
         if is_checked:
             rl.text("Checkbox is checked")
         """
-        return self._x_input("checkbox", label, checked, key, on_change, value_attribute="checked", **kwargs)
+        component_id = key or self._new_widget_id("checkbox", label)
+        new_value = self.session_state.get(component_id, checked)
+        if not isinstance(new_value, bool):
+            new_value = bool(new_value) if new_value is not None else checked
+        has_changed, event_value = self._get_event_value(component_id, "change", "checked")
+        if has_changed:
+            new_value = bool(event_value) if event_value is not None else False
+            self.session_state[component_id] = new_value
+            if on_change:
+                on_change(new_value)
+        self._create_element(
+            name="checkbox",
+            key=component_id,
+            props={
+                "label": label,
+                "checked": new_value,
+                **kwargs,
+            },
+        )
+        return bool(new_value)
 
     def checkbox_group(
         self,
         label: str,
-        options: Sequence[Dict[str, Any] | str],
+        options: List[Dict[str, Any] | str],
         *,
-        value: List[str | int] | None = None,
-        key: str | None = None,
-        on_change: Callable[[List[str | int]], None] | None = None,
+        value: Optional[List[Any]] = None,
+        key: Optional[str] = None,
+        on_change: Optional[Callable[[List[Any]], None]] = None,
         flex_direction: Literal["row", "col"] = "col",
-        **kwargs,
-    ) -> List[str | int]:
+        **kwargs: Any,
+    ) -> List[Any]:
         """
         Creates a checkbox group with the given label and options.
 
         Args:
             label (str): The label of the checkbox group.
-            options (Sequence[Dict[str, Any] | str]): The options of the checkbox group.
+            options (List[Dict[str, Any] | str]): The options of the checkbox group.
             value (List[str | int] | None): The value of the checkbox group.
             key (str | None): The key of the checkbox group.
             on_change (Callable[[List[str | int]], None] | None): The function to call when the value changes.
@@ -893,11 +950,33 @@ class RouteLitBuilder:
         rl.text(f"Selected options: {', '.join(selected_options) if selected_options else 'None'}")
         ```
         """
-        return self._x_input(
-            "checkbox-group", label, value, key, on_change, options=options, flexDirection=flex_direction, **kwargs
+        component_id = key or self._new_widget_id("checkbox-group", label)
+        new_value = self.session_state.get(component_id, value) or []
+        if not isinstance(new_value, list):
+            new_value = value or []
+        has_changed, event_value = self._get_event_value(component_id, "change", "value")
+        if has_changed:
+            new_value = event_value if isinstance(event_value, list) else []
+            self.session_state[component_id] = new_value
+            if on_change:
+                on_change(new_value)
+        self._create_element(
+            name="checkbox-group",
+            key=component_id,
+            props={
+                "label": label,
+                "value": new_value,
+                "options": options,
+                "flexDirection": flex_direction,
+                **kwargs,
+            },
         )
+        # Ensure return type is List[str | int]
+        if isinstance(new_value, list):
+            return new_value
+        return []
 
-    def rerun(self, scope: RerunType = "auto", clear_event: bool = True):
+    def rerun(self, scope: RerunType = "auto", clear_event: bool = True) -> None:
         """
         Reruns the current page. Use this to rerun the app or the fragment depending on the context.
 
@@ -925,7 +1004,7 @@ class RouteLitBuilder:
     def get_head(self) -> Head:
         return self.head
 
-    def set_page_config(self, page_title: str | None = None, page_description: str | None = None):
+    def set_page_config(self, page_title: Optional[str] = None, page_description: Optional[str] = None) -> None:
         """
         Sets the page title and description.
 
@@ -934,7 +1013,7 @@ class RouteLitBuilder:
             page_description (str | None): The description of the page.
         """
         self.head = Head(title=page_title, description=page_description)
-        new_element = self._create_non_widget_element(
+        self._create_non_widget_element(
             name="head",
             key="__head__",
             props={
@@ -942,9 +1021,8 @@ class RouteLitBuilder:
                 "description": page_description,
             },
         )
-        return new_element
 
-    def __enter__(self):
+    def __enter__(self) -> "RouteLitBuilder":
         # When using with builder.element():
         # Make parent builder redirect to this one
         if self.parent_builder:
@@ -952,7 +1030,7 @@ class RouteLitBuilder:
             self.parent_builder.active_child_builder = self
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
         # Reset parent's active child when exiting context
         if self.parent_builder:
             if self._prev_active_child_builder:
@@ -961,20 +1039,21 @@ class RouteLitBuilder:
             else:
                 self.parent_builder.active_child_builder = None
 
-    def __call__(self, *args: Any, **kwds: Any) -> Any:
+    def __call__(self, *args: Any, **kwds: Any) -> "RouteLitBuilder":
         return self
 
     def get_elements(self) -> List[RouteLitElement]:
-        if self.initial_fragment_id:
-            return self.elements[0].children
+        if self.initial_fragment_id and self.elements:
+            first_element_children = self.elements[0].children
+            return first_element_children if first_element_children is not None else []
         return self.elements
 
-    def get_fragments(self) -> MutableMapping[str, Sequence[int]]:
+    def get_fragments(self) -> MutableMapping[str, List[int]]:
         return self.fragments
 
-    def on_end(self):
+    def on_end(self) -> None:
         self.session_state.pop("__ignore_submit", None)
 
     @classmethod
-    def get_client_resource_paths(cls) -> Sequence[AssetTarget]:
+    def get_client_resource_paths(cls) -> List[AssetTarget]:
         return cls.static_assets_targets

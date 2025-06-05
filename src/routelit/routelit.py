@@ -1,11 +1,12 @@
 import functools
-from collections.abc import MutableMapping, Sequence
+from collections.abc import MutableMapping
 from dataclasses import asdict
 from typing import (
     Any,
     Callable,
     Dict,
     List,
+    Literal,
     Optional,
     Tuple,
     Type,
@@ -32,13 +33,15 @@ class RouteLit:
     def __init__(
         self,
         BuilderClass: Type[RouteLitBuilder] = RouteLitBuilder,
-        session_storage: Optional[MutableMapping[str, MutableMapping[str, Any]]] = None,
+        session_storage: Optional[MutableMapping[str, Any]] = None,
     ):
         self.BuilderClass = BuilderClass
         self.session_storage = session_storage or {}
         self.fragment_registry: Dict[str, Callable[[RouteLitBuilder], Any]] = {}
 
-    def response(self, view_fn: ViewFn, request: RouteLitRequest, **kwargs) -> Union[RouteLitResponse, Dict[str, Any]]:
+    def response(
+        self, view_fn: ViewFn, request: RouteLitRequest, **kwargs: Any
+    ) -> Union[RouteLitResponse, Dict[str, Any]]:
         """Handle the request and return the response.
 
         Args:
@@ -80,7 +83,7 @@ class RouteLit:
             # set custom exception for unsupported request method
             raise ValueError(request.method)
 
-    def handle_get_request(self, view_fn: ViewFn, request: RouteLitRequest, **kwargs) -> RouteLitResponse:
+    def handle_get_request(self, view_fn: ViewFn, request: RouteLitRequest, **kwargs: Any) -> RouteLitResponse:
         session_keys = request.get_session_keys()
         ui_key, state_key, fragment_addresses_key, fragment_params_key = session_keys
         if state_key in self.session_storage:
@@ -114,14 +117,13 @@ class RouteLit:
         *,
         session_keys: SessionKeys,
         prev_elements: List[RouteLitElement],
-        prev_fragments: MutableMapping[str, Sequence[int]],
+        prev_fragments: MutableMapping[str, List[int]],
         elements: List[RouteLitElement],
-        session_state: Dict[str, Any],
-        fragments: MutableMapping[str, Sequence[int]],
+        session_state: MutableMapping[str, Any],
+        fragments: MutableMapping[str, List[int]],
         fragment_id: Optional[str] = None,
-    ):
-        fragment_address = prev_fragments.get(fragment_id, [])
-        if len(fragment_address) > 0:
+    ) -> None:
+        if fragment_id and (fragment_address := prev_fragments.get(fragment_id, [])) and len(fragment_address) > 0:
             fragment_elements = elements
 
             new_elements = set_elements_at_address(prev_elements, fragment_address, fragment_elements)
@@ -131,7 +133,7 @@ class RouteLit:
         ui_key, state_key, fragment_addresses_key, _ = session_keys
         self.session_storage[ui_key] = new_elements
         self.session_storage[state_key] = session_state
-        self.session_storage[fragment_addresses_key] = prev_fragments | fragments
+        self.session_storage[fragment_addresses_key] = {**prev_fragments, **fragments}
 
     def _get_prev_elements_at_fragment(
         self, session_keys: SessionKeys, fragment_id: Optional[str]
@@ -146,7 +148,7 @@ class RouteLit:
             return prev_elements, fragment_elements
         return prev_elements, None
 
-    def _maybe_handle_form_event(self, request: RouteLitRequest, session_keys: SessionKeys):
+    def _maybe_handle_form_event(self, request: RouteLitRequest, session_keys: SessionKeys) -> bool:
         event = request.ui_event
         if event and event.get("type") != "submit" and (form_id := event.get("formId")):
             session_state = self.session_storage.get(session_keys.state_key, {})
@@ -156,7 +158,9 @@ class RouteLit:
             return True
         return False
 
-    def handle_post_request(self, view_fn: ViewFn, request: RouteLitRequest, *args, **kwargs) -> Dict[str, Any]:
+    def handle_post_request(
+        self, view_fn: ViewFn, request: RouteLitRequest, *args: Any, **kwargs: Any
+    ) -> Dict[str, Any]:
         app_view_fn = view_fn
         session_keys = request.get_session_keys()
         try:
@@ -193,7 +197,7 @@ class RouteLit:
             if is_navigation_event:
                 self._clear_session_state(prev_session_keys)
             actions = compare_elements(maybe_prev_fragment_elements or prev_elements, elements)
-            target = "app" if fragment_id is None else "fragment"
+            target: Literal["app", "fragment"] = "app" if fragment_id is None else "fragment"
             action_response = ActionsResponse(actions=actions, target=target)
             return asdict(action_response)
         except RerunException as e:
@@ -209,13 +213,13 @@ class RouteLit:
     def get_builder_class(self) -> Type[RouteLitBuilder]:
         return self.BuilderClass
 
-    def _clear_session_state(self, session_keys: SessionKeys):
+    def _clear_session_state(self, session_keys: SessionKeys) -> None:
         self.session_storage.pop(session_keys.state_key, None)
         self.session_storage.pop(session_keys.ui_key, None)
         self.session_storage.pop(session_keys.fragment_addresses_key, None)
         self.session_storage.pop(session_keys.fragment_params_key, None)
 
-    def _maybe_clear_session_state(self, request: RouteLitRequest, session_keys: SessionKeys):
+    def _maybe_clear_session_state(self, request: RouteLitRequest, session_keys: SessionKeys) -> None:
         if request.get_query_param("__routelit_clear_session_state"):
             self._clear_session_state(session_keys)
             raise EmptyReturnException()
@@ -233,15 +237,15 @@ class RouteLit:
 
         return assets
 
-    def default_client_assets(self) -> List[ViteComponentsAssets]:
+    def default_client_assets(self) -> ViteComponentsAssets:
         return get_vite_components_assets("routelit")
 
-    def _register_fragment(self, key: str, fragment: Callable[[RouteLitBuilder], Any]):
+    def _register_fragment(self, key: str, fragment: Callable[[RouteLitBuilder], Any]) -> None:
         self.fragment_registry[key] = fragment
 
     def _preprocess_fragment_params(
-        self, rl: RouteLitBuilder, fragment_key: str, args: List[Any], kwargs: Dict[str, Any]
-    ) -> Tuple[List[Any], Dict[str, Any]]:
+        self, rl: RouteLitBuilder, fragment_key: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]
+    ) -> Tuple[Tuple[Any, ...], Dict[str, Any]]:
         is_fragment_request = rl.request.fragment_id is not None
         session_keys = rl.request.get_session_keys()
         if not is_fragment_request:
@@ -260,7 +264,7 @@ class RouteLit:
 
         return args, kwargs
 
-    def fragment(self, key: Optional[str] = None):
+    def fragment(self, key: Optional[str] = None) -> Callable[[ViewFn], ViewFn]:
         """
         Decorator to register a fragment.
 
@@ -282,11 +286,11 @@ class RouteLit:
         ```
         """
 
-        def decorator_fragment(view_fn: ViewFn):
+        def decorator_fragment(view_fn: ViewFn) -> ViewFn:
             fragment_key = key or view_fn.__name__
 
             @functools.wraps(view_fn)
-            def wrapper(rl: RouteLitBuilder, *args, **kwargs):
+            def wrapper(rl: RouteLitBuilder, *args: Any, **kwargs: Any) -> Any:
                 args, kwargs = self._preprocess_fragment_params(rl, fragment_key, args, kwargs)
 
                 with rl._fragment(fragment_key):
@@ -298,7 +302,7 @@ class RouteLit:
 
         return decorator_fragment
 
-    def dialog(self, key: Optional[str] = None):
+    def dialog(self, key: Optional[str] = None) -> Callable[[ViewFn], ViewFn]:
         """Decorator to register a dialog.
 
         Args:
@@ -319,12 +323,12 @@ class RouteLit:
         ```
         """
 
-        def decorator_dialog(view_fn: ViewFn):
+        def decorator_dialog(view_fn: ViewFn) -> ViewFn:
             fragment_key = key or view_fn.__name__
             dialog_key = f"{fragment_key}-dialog"
 
             @functools.wraps(view_fn)
-            def wrapper(rl: RouteLitBuilder, *args, **kwargs):
+            def wrapper(rl: RouteLitBuilder, *args: Any, **kwargs: Any) -> Any:
                 args, kwargs = self._preprocess_fragment_params(rl, fragment_key, args, kwargs)
 
                 with rl._fragment(fragment_key), rl._dialog(dialog_key):
