@@ -44,6 +44,9 @@ jobs:
         with:
           name: pyproject-toml
 
+      - name: Build client
+        run: ./build_client.sh
+
       - name: Build package
         run: uv build
 
