@@ -46,3 +46,9 @@ runs:
       uses: pnpm/action-setup@v4
       with:
         version: ${{ inputs.pnpm-version }}
+
+    - name: Configure git
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      shell: bash
