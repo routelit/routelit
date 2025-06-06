@@ -19,9 +19,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://rolangom.github.io/routelit/"
-Repository = "https://github.com/rolangom/routelit"
-Documentation = "https://rolangom.github.io/routelit/"
+Homepage = "https://routelit.github.io/routelit/"
+Repository = "https://github.com/routelit/routelit"
+Documentation = "https://routelit.github.io/routelit/"
 
 [dependency-groups]
 dev = [

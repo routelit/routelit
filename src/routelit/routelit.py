@@ -30,6 +30,21 @@ ViewFn = Callable[[RouteLitBuilder], Any]
 
 
 class RouteLit:
+    """
+    RouteLit is a class that provides a framework for handling HTTP requests and generating responses in a web application. It manages the routing and view functions that define how the application responds to different requests.
+
+    The class maintains a registry of fragment functions and uses a builder pattern to construct responses. It supports both GET and POST requests, handling them differently based on the request method.
+
+    Key features:
+    - Session storage management
+    - Fragment registry for reusable view components
+    - Support for both GET and POST request handling
+    - Builder pattern for constructing responses
+    - Support for dependency injection in view functions
+
+    The class is designed to be flexible, allowing for custom builder classes and session storage implementations.
+    """
+
     def __init__(
         self,
         BuilderClass: Type[RouteLitBuilder] = RouteLitBuilder,
