@@ -8,68 +8,137 @@
 
 ![Routelit](https://wsrv.nl/?url=res.cloudinary.com/rolangom/image/upload/v1747976918/routelit/routelit_c2otsv.png&w=300&h=300)
 
-Project to build easy user interfaces, framework agnostic.
+**routelit** is a Python framework for building interactive web user interfaces that are framework-agnostic and easy to use. It allows you to create dynamic web applications with a simple, declarative API similar to Streamlit, but designed to work with any HTTP framework (Flask, FastAPI, Django, etc.).
+
+## ✨ Features
+
+- **Framework Agnostic**: Works with any Python web framework (Flask, FastAPI, Django, etc.)
+- **Declarative UI**: Build interfaces using simple Python functions
+- **Interactive Components**: Buttons, forms, inputs, selects, checkboxes, and more
+- **State Management**: Built-in session state management
+- **Reactive Updates**: Automatic UI updates based on user interactions
+- **Fragment Support**: Partial page updates for better performance
+- **Flexible Layouts**: Containers, columns, flex layouts, and expandable sections
+- **Rich Content**: Support for markdown, images, and custom styling
+
+## 🚀 Installation
+
+Install routelit using pip:
+
+```bash
+pip install routelit
+```
+
+## 📖 Quick Start
+
+Here's a simple example of how to use routelit:
+
+```python
+from routelit import RouteLit, RouteLitBuilder
+
+# Create a RouteLit instance
+rl = RouteLit()
+
+def my_app(builder: RouteLitBuilder):
+    builder.title("Welcome to RouteLit!")
+
+    name = builder.text_input("Enter your name:", value="World")
+
+    if builder.button("Say Hello"):
+        builder.text(f"Hello, {name}!")
+
+    builder.markdown("This is a **markdown** text with *emphasis*.")
+
+# Use with your preferred web framework
+# Example with Flask:
+from flask import Flask, request
+
+app = Flask(__name__)
+
+flask_adapter = ... # TODO: publish package for this
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+
+    # Return HTML response
+    return flask_adapter.response(my_app)
+```
+
+## 🏗️ Core Concepts
+
+### Builder Pattern
+RouteLit uses a builder pattern where you define your UI using a `RouteLitBuilder` instance:
+
+```python
+def my_view(builder: RouteLitBuilder):
+    builder.header("My Application")
+
+    with builder.container():
+        builder.text("This is inside a container")
+
+        col1, col2 = builder.columns(2)
+        with col1:
+            builder.text("Left column")
+        with col2:
+            builder.text("Right column")
+```
+
+### State Management
+RouteLit automatically manages state between requests:
+
+```python
+def counter_app(builder: RouteLitBuilder):
+    # Get current count from session state
+    count = builder.session_state.get("count", 0)
+
+    builder.text(f"Count: {count}")
+
+    if builder.button("Increment"):
+        builder.session_state["count"] = count + 1
+        builder.rerun()  # Trigger a re-render
+```
+
+### Interactive Components
+Build rich forms and interactive elements:
+
+```python
+def form_example(builder: RouteLitBuilder):
+    with builder.form("my_form"):
+        name = builder.text_input("Name")
+        age = builder.text_input("Age", type="number")
+
+        options = ["Option 1", "Option 2", "Option 3"]
+        choice = builder.select("Choose an option", options)
+
+        newsletter = builder.checkbox("Subscribe to newsletter")
+
+        if builder.button("Submit", event_name="submit"):
+            builder.text(f"Hello {name}, you are {age} years old!")
+            if newsletter:
+                builder.text("Thanks for subscribing!")
+```
+
+## 🔧 Framework Integration
+
+RouteLit is designed to work with any Python web framework.
+TODO: Add framework integration examples.
+
+## 📚 Documentation
 
 - **Github repository**: <https://github.com/routelit/routelit/>
-- **Documentation** <https://routelit.github.io/routelit/>
+- **Documentation**: <https://routelit.github.io/routelit/>
 
-## Getting started with your project
+## 🤝 Contributing
 
-### 1. Create a New Repository
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
-First, create a repository on GitHub with the same name as this project, and then run the following commands:
+## 📄 License
 
-```bash
-git init -b main
-git add .
-git commit -m "init commit"
-git remote add origin git@github.com:routelit/routelit.git
-git push -u origin main
-```
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-### 2. Set Up Your Development Environment
+## 🙏 Acknowledgments
 
-Then, install the environment and the pre-commit hooks with
-
-```bash
-make install
-```
-
-This will also generate your `uv.lock` file
-
-### 3. Run the pre-commit hooks
-
-Initially, the CI/CD pipeline might be failing due to formatting issues. To resolve those run:
-
-```bash
-uv run pre-commit run -a
-```
-
-### 4. Commit the changes
-
-Lastly, commit the changes made by the two steps above to your repository.
-
-```bash
-git add .
-git commit -m 'Fix formatting issues'
-git push origin main
-```
-
-You are now ready to start development on your project!
-The CI/CD pipeline will be triggered when you open a pull request, merge to main, or when you create a new release.
-
-To finalize the set-up for publishing to PyPI, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/publishing/#set-up-for-pypi).
-For activating the automatic documentation with MkDocs, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/mkdocs/#enabling-the-documentation-on-github).
-To enable the code coverage reports, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/codecov/).
-
-## Releasing a new version
-
-- Create an API Token on [PyPI](https://pypi.org/).
-- Add the API Token to your projects secrets with the name `PYPI_TOKEN` by visiting [this page](https://github.com/rolangom/routelit/settings/secrets/actions/new).
-- Create a [new release](https://github.com/rolangom/routelit/releases/new) on Github.
-- Create a new tag in the form `*.*.*`.
-
-For more details, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/cicd/#how-to-trigger-a-release).
+RouteLit is inspired by [Streamlit](https://streamlit.io/) but designed to be framework-agnostic and more flexible for web development use cases.
 
 ---
 
