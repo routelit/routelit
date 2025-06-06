@@ -1,5 +1,4 @@
 name: release-main
-publish_to_pypi: "y"
 
 on:
   release:
