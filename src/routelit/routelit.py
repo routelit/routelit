@@ -55,7 +55,7 @@ class RouteLit:
         self.fragment_registry: Dict[str, Callable[[RouteLitBuilder], Any]] = {}
 
     def response(
-        self, view_fn: ViewFn, request: RouteLitRequest, **kwargs: Any
+        self, view_fn: ViewFn, request: RouteLitRequest, *args: Any, **kwargs: Any
     ) -> Union[RouteLitResponse, Dict[str, Any]]:
         """Handle the request and return the response.
 
@@ -91,14 +91,16 @@ class RouteLit:
         ```
         """
         if request.method == "GET":
-            return self.handle_get_request(view_fn, request, **kwargs)
+            return self.handle_get_request(view_fn, request, *args, **kwargs)
         elif request.method == "POST":
-            return self.handle_post_request(view_fn, request, **kwargs)
+            return self.handle_post_request(view_fn, request, *args, **kwargs)
         else:
             # set custom exception for unsupported request method
             raise ValueError(request.method)
 
-    def handle_get_request(self, view_fn: ViewFn, request: RouteLitRequest, **kwargs: Any) -> RouteLitResponse:
+    def handle_get_request(
+        self, view_fn: ViewFn, request: RouteLitRequest, *args: Any, **kwargs: Any
+    ) -> RouteLitResponse:
         session_keys = request.get_session_keys()
         ui_key, state_key, fragment_addresses_key, fragment_params_key = session_keys
         if state_key in self.session_storage:
@@ -107,7 +109,7 @@ class RouteLit:
             self.session_storage.pop(fragment_addresses_key, None)
             self.session_storage.pop(fragment_params_key, None)
         builder = self.BuilderClass(request, session_state={}, fragments={})
-        view_fn(builder, **kwargs)
+        view_fn(builder, *args, **kwargs)
         elements = builder.get_elements()
         self.session_storage[ui_key] = elements
         self.session_storage[state_key] = builder.session_state
@@ -218,9 +220,9 @@ class RouteLit:
         except RerunException as e:
             self.session_storage[session_keys.state_key] = e.state
             if e.scope == "app":
-                return self.handle_post_request(app_view_fn, request, **kwargs)
+                return self.handle_post_request(app_view_fn, request, *args, **kwargs)
             else:
-                return self.handle_post_request(view_fn, request, **kwargs)
+                return self.handle_post_request(view_fn, request, *args, **kwargs)
         except EmptyReturnException:
             # No need to return anything
             return asdict(ActionsResponse(actions=[], target="app"))
