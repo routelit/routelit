@@ -4,8 +4,10 @@ from dataclasses import asdict, dataclass
 from typing import (
     Any,
     Dict,
+    Iterator,
     List,
     Literal,
+    MutableMapping,
     NamedTuple,
     Optional,
     Tuple,
@@ -258,3 +260,69 @@ class RouteLitResponse:
 
     def get_str_json_elements(self) -> str:
         return json.dumps([asdict(element) for element in self.elements])
+
+
+class PropertyDict:
+    """
+    A dictionary that can be accessed as attributes.
+    Example:
+    ```python
+    session_state = PropertyDict({"name": "John"})
+    print(session_state.name)  # "John"
+    print(session_state["name"])  # "John"
+    session_state.name = "Jane"
+    print(session_state.name)  # "Jane"
+    print(session_state["name"])  # "Jane"
+    del session_state.name
+    print(session_state.name)  # None
+    print(session_state["name"])  # None
+    ```
+    """
+
+    def __init__(self, initial_dict: Optional[MutableMapping[str, Any]] = None):
+        self._data = initial_dict or {}
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self._data[name]
+        except KeyError:
+            return None
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name.startswith("_"):
+            super().__setattr__(name, value)
+        else:
+            self._data[name] = value
+
+    def __repr__(self) -> str:
+        return f"PropertyDict({self._data!r})"
+
+    def __str__(self) -> str:
+        return str(self._data)
+
+    def __getitem__(self, key: str) -> Any:
+        return self._data[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self._data[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self._data[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._data
+
+    def pop(self, key: str, *args: Any) -> Any:
+        return self._data.pop(key, *args)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._data.get(key, default)
+
+    def get_data(self) -> MutableMapping[str, Any]:
+        return self._data

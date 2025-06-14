@@ -5,6 +5,7 @@ from typing import Any, Callable, ClassVar, Dict, List, Literal, Optional, Tuple
 from routelit.domain import (
     AssetTarget,
     Head,
+    PropertyDict,
     RerunType,
     RouteLitElement,
     RouteLitEvent,
@@ -57,13 +58,14 @@ class RouteLitBuilder:
     def __init__(
         self,
         request: RouteLitRequest,
+        session_state: PropertyDict,
         initial_fragment_id: Optional[str] = None,
         fragments: Optional[MutableMapping[str, List[int]]] = None,
         prefix: Optional[str] = None,
-        session_state: Optional[MutableMapping[str, Any]] = None,
         parent_element: Optional[RouteLitElement] = None,
         parent_builder: Optional["RouteLitBuilder"] = None,
         address: Optional[List[int]] = None,
+        elements: Optional[List[RouteLitElement]] = None,
     ):
         self.request = request
         self.initial_fragment_id = initial_fragment_id
@@ -75,10 +77,9 @@ class RouteLitBuilder:
             self.prefix = parent_element.key if parent_element else ""
         else:
             self.prefix = prefix
-        self.elements: List[RouteLitElement] = []
-        # self.elements_no_fragments: List[RouteLitElement] = []
+        self.elements: List[RouteLitElement] = elements or []
         self.num_non_widget = 0
-        self.session_state: MutableMapping[str, Any] = session_state or {}
+        self.session_state = session_state
         self.parent_element = parent_element
         self.parent_builder = parent_builder
         if parent_element:
@@ -275,12 +276,12 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        with rl.form("login"):
-            username = rl.text_input("Username")
-            password = rl.text_input("Password", type="password")
-            is_submitted = rl.button("Login", event_name="submit")
+        with ui.form("login"):
+            username = ui.text_input("Username")
+            password = ui.text_input("Password", type="password")
+            is_submitted = ui.button("Login", event_name="submit")
             if is_submitted:
-                rl.text(f"Login successful for {username}")
+                ui.text(f"Login successful for {username}")
         ```
         """
         form = self._create_non_widget_element(
@@ -312,9 +313,9 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        rl.link("/signup", text="Signup")
-        rl.link("/login", text="Login", replace=True)
-        rl.link("https://www.google.com", text="Google", is_external=True)
+        ui.link("/signup", text="Signup")
+        ui.link("/login", text="Login", replace=True)
+        ui.link("https://www.google.com", text="Google", is_external=True)
         ```
         """
         new_element = self._create_non_widget_element(
@@ -352,10 +353,10 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        with rl.link_area("https://www.google.com"):
-            with rl.flex(direction="row", gap="small"):
-                rl.image("https://www.google.com/favicon.ico", width="24px", height="24px")
-                rl.text("Google")
+        with ui.link_area("https://www.google.com"):
+            with ui.flex(direction="row", gap="small"):
+                ui.image("https://www.google.com/favicon.ico", width="24px", height="24px")
+                ui.text("Google")
         ```
         """
         link_element = self.link(
@@ -379,8 +380,8 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        with rl.container(height="100px"):
-            rl.text("Container")
+        with ui.container(height="100px"):
+            ui.text("Container")
         ```
         """
         container = self._create_non_widget_element(
@@ -390,7 +391,14 @@ class RouteLitBuilder:
         )
         return self._build_nested_builder(container)
 
-    def markdown(self, body: str, *, allow_unsafe_html: bool = False, key: Optional[str] = None, **kwargs: Any) -> None:
+    def markdown(
+        self,
+        body: str,
+        *,
+        allow_unsafe_html: bool = False,
+        key: Optional[str] = None,
+        **kwargs: Any,
+    ) -> None:
         """
         Creates a markdown component.
 
@@ -401,7 +409,7 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        rl.markdown("**Bold** *italic* [link](https://www.google.com)")
+        ui.markdown("**Bold** *italic* [link](https://www.google.com)")
         ```
         """
         self._create_non_widget_element(
@@ -420,7 +428,7 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        rl.text("Text")
+        ui.text("Text")
         ```
         """
         self.markdown(body, allow_unsafe_html=False, key=key, **kwargs)
@@ -435,7 +443,7 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        rl.title("Title")
+        ui.title("Title")
         ```
         """
         self._create_non_widget_element(
@@ -454,7 +462,7 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        rl.header("Header")
+        ui.header("Header")
         ```
         """
         self._create_non_widget_element(
@@ -473,7 +481,7 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        rl.subheader("Subheader")
+        ui.subheader("Subheader")
         ```
         """
         self._create_non_widget_element(
@@ -493,7 +501,7 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        rl.image("https://www.google.com/favicon.ico", alt="Google", width="24px", height="24px")
+        ui.image("https://www.google.com/favicon.ico", alt="Google", width="24px", height="24px")
         ```
         """
         self._create_non_widget_element(
@@ -515,16 +523,16 @@ class RouteLitBuilder:
             RouteLitBuilder: A builder for the expander.
         ```python
         Usage:
-            def build_index_view(rl: RouteLitBuilder):
+            def build_index_view(ui: RouteLitBuilder):
                 # Context manager style
-                with rl.expander("Title"):
-                    rl.text("Content")
+                with ui.expander("Title"):
+                    ui.text("Content")
 
-                with rl.expander("Title", open=True) as exp0:
+                with ui.expander("Title", open=True) as exp0:
                     exp0.text("Content")
 
                 # Function call style
-                exp = rl.expander("Title")
+                exp = ui.expander("Title")
                 exp.text("Content")
         ```
         """
@@ -558,17 +566,17 @@ class RouteLitBuilder:
         Examples:
         ```python
             # 2 columns with equal width
-            col1, col2 = rl.columns(2)
+            col1, col2 = ui.columns(2)
             # usage inline
             col1.text("Column 1")
             col2.text("Column 2")
             # usage as context manager
             with col1:
-                rl.text("Column 1")
+                ui.text("Column 1")
             with col2:
-                rl.text("Column 2")
+                ui.text("Column 2")
             # usage with different widths
-            col1, col2, col3 = rl.columns([2, 1, 1])
+            col1, col2, col3 = ui.columns([2, 1, 1])
             col1.text("Column 1")
             col2.text("Column 2")
             col3.text("Column 3")
@@ -653,9 +661,9 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        is_clicked = rl.button("Click me", on_click=lambda: print("Button clicked"))
+        is_clicked = ui.button("Click me", on_click=lambda: print("Button clicked"))
         if is_clicked:
-            rl.text("Button clicked")
+            ui.text("Button clicked")
         ```
         """
         button = self._create_element(
@@ -754,8 +762,8 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        name = rl.text_input("Name", value="John", on_change=lambda value: print(f"Name changed to {value}"))
-        rl.text(f"Name is {name}")
+        name = ui.text_input("Name", value="John", on_change=lambda value: print(f"Name changed to {value}"))
+        ui.text(f"Name is {name}")
         ```
         """
         return self._x_input("text-input", label, value, key, on_change, type=type, **kwargs)
@@ -784,8 +792,8 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        text = rl.textarea("Text", value="Hello, world!", on_change=lambda value: print(f"Text changed to {value}"))
-        rl.text(f"Text is {text}")
+        text = ui.textarea("Text", value="Hello, world!", on_change=lambda value: print(f"Text changed to {value}"))
+        ui.text(f"Text is {text}")
         ```
         """
         return self._x_input("textarea", label, value, key, on_change, **kwargs)
@@ -820,8 +828,8 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        value = rl.radio("Radio", options=["Option 1", {"label": "Option 2", "value": "option2"}, {"label": "Option 3", "value": "option3", "disabled": True}], value="Option 1", on_change=lambda value: print(f"Radio value changed to {value}"))
-        rl.text(f"Radio value is {value}")
+        value = ui.radio("Radio", options=["Option 1", {"label": "Option 2", "value": "option2"}, {"label": "Option 3", "value": "option3", "disabled": True}], value="Option 1", on_change=lambda value: print(f"Radio value changed to {value}"))
+        ui.text(f"Radio value is {value}")
         ```
         """
         return self._x_radio_select(
@@ -864,8 +872,8 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        value = rl.select("Select", options=["Option 1", {"label": "Option 2", "value": "option2"}, {"label": "Option 3", "value": "option3", "disabled": True}], value="Option 1", on_change=lambda value: print(f"Select value changed to {value}"))
-        rl.text(f"Select value is {value}")
+        value = ui.select("Select", options=["Option 1", {"label": "Option 2", "value": "option2"}, {"label": "Option 3", "value": "option3", "disabled": True}], value="Option 1", on_change=lambda value: print(f"Select value changed to {value}"))
+        ui.text(f"Select value is {value}")
         ```
         """
         return self._x_radio_select("select", label, options, value, key, on_change, **kwargs)
@@ -894,9 +902,9 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        is_checked = rl.checkbox("Check me", on_change=lambda checked: print(f"Checkbox is {'checked' if checked else 'unchecked'}"))
+        is_checked = ui.checkbox("Check me", on_change=lambda checked: print(f"Checkbox is {'checked' if checked else 'unchecked'}"))
         if is_checked:
-            rl.text("Checkbox is checked")
+            ui.text("Checkbox is checked")
         """
         component_id = key or self._new_widget_id("checkbox", label)
         new_value = self.session_state.get(component_id, checked)
@@ -946,8 +954,8 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        selected_options = rl.checkbox_group("Checkbox Group", options=["Option 1", {"label": "Option 2", "value": "option2"}, {"label": "Option 3", "value": "option3", "disabled": True}], value=["Option 1"], on_change=lambda value: print(f"Checkbox group value changed to {value}"))
-        rl.text(f"Selected options: {', '.join(selected_options) if selected_options else 'None'}")
+        selected_options = ui.checkbox_group("Checkbox Group", options=["Option 1", {"label": "Option 2", "value": "option2"}, {"label": "Option 3", "value": "option3", "disabled": True}], value=["Option 1"], on_change=lambda value: print(f"Checkbox group value changed to {value}"))
+        ui.text(f"Selected options: {', '.join(selected_options) if selected_options else 'None'}")
         ```
         """
         component_id = key or self._new_widget_id("checkbox-group", label)
@@ -986,12 +994,12 @@ class RouteLitBuilder:
 
         Example:
         ```python
-        counter = rl.session_state.get("counter", 0)
-        rl.text(f"Counter is {counter}")
-        should_increase =rl.button("Increment")
+        counter = ui.session_state.get("counter", 0)
+        ui.text(f"Counter is {counter}")
+        should_increase = ui.button("Increment")
         if should_increase:
-            rl.session_state["counter"] = counter + 1
-            rl.rerun()
+            ui.session_state["counter"] = counter + 1
+            ui.rerun()
         ```
         """
         self.elements.clear()
@@ -999,7 +1007,7 @@ class RouteLitBuilder:
             self.request.clear_event()
         if scope == "app":
             self.request.clear_fragment_id()
-        raise RerunException(self.session_state, scope=scope)
+        raise RerunException(self.session_state.get_data(), scope=scope)
 
     def get_head(self) -> Head:
         return self.head

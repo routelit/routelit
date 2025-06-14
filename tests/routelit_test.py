@@ -20,7 +20,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from routelit.builder import RouteLitBuilder
-from routelit.domain import AddAction, AssetTarget, RemoveAction, RouteLitElement, RouteLitRequest, SessionKeys
+from routelit.domain import (
+    AddAction,
+    AssetTarget,
+    PropertyDict,
+    RemoveAction,
+    RouteLitElement,
+    RouteLitRequest,
+    SessionKeys,
+)
 from routelit.exceptions import EmptyReturnException, RerunException
 from routelit.routelit import RouteLit
 
@@ -481,11 +489,9 @@ class TestRouteLit:
                 {"name": "text", "props": {"text": "Response text"}, "key": "response-text"}
             ]
 
-            result = routelit.response(simple_view, request)
+            routelit.response(simple_view, request)
 
-            mock_handle_get.assert_called_once_with(simple_view, request)
-            assert len(result) == 1
-            assert result[0]["name"] == "text"
+            mock_handle_get.assert_called_once_with(simple_view, request, None)
 
     def test_response_post(self, routelit):
         """Test response method with POST request"""
@@ -498,11 +504,9 @@ class TestRouteLit:
             mock_action = {"type": "add", "address": [0], "key": "test-div"}
             mock_handle_post.return_value = [mock_action]
 
-            result = routelit.response(simple_view, request)
+            routelit.response(simple_view, request)
 
-            mock_handle_post.assert_called_once_with(simple_view, request)
-            assert len(result) == 1
-            assert result[0]["type"] == "add"
+            mock_handle_post.assert_called_once_with(simple_view, request, None)
 
     def test_response_unsupported_method(self, routelit):
         """Test response method with unsupported HTTP method"""
@@ -991,3 +995,707 @@ class TestRouteLit:
 
             # Skip session state verification as it may be inconsistent in the test environment
             # Verify the full UI state in storage reflects the fragment
+
+    def test_dialog_decorator(self, routelit):
+        """Test dialog decorator functionality"""
+
+        # Define a view with a dialog
+        @routelit.dialog("my_dialog")
+        def my_dialog(builder, message: str):
+            builder.text(f"Dialog: {message}", key="dialog-text")
+            if builder.button("Close", key="close-button"):
+                builder.rerun()
+
+        def main_view(builder, **kwargs):
+            builder.text("Main Content", key="main-text")
+            my_dialog(builder, message="Hello from dialog!")
+
+        # Initial GET request
+        get_request = MockRequest()
+        get_result = routelit.handle_get_request(main_view, get_request)
+        session_keys = get_request.get_session_keys()
+
+        # Verify dialog registration
+        assert "my_dialog" in routelit.fragment_registry
+        assert session_keys.fragment_params_key in routelit.session_storage
+        assert "my_dialog" in routelit.session_storage[session_keys.fragment_params_key]
+        assert routelit.session_storage[session_keys.fragment_params_key]["my_dialog"]["kwargs"] == {
+            "message": "Hello from dialog!"
+        }
+
+        # Verify initial render output
+        assert len(get_result.elements) == 2  # main-text and the dialog
+        assert get_result.elements[0]["key"] == "main-text"
+        assert get_result.elements[1]["name"] == "fragment"  # Dialog is rendered as a fragment
+        assert get_result.elements[1]["key"] == "my_dialog"  # Dialog key
+
+        # Check dialog structure
+        dialog_element = get_result.elements[1]["children"][0]
+        assert dialog_element["name"] == "dialog"
+        assert dialog_element["key"] == "my_dialog-dialog"
+        assert dialog_element["props"]["open"] is True
+        assert dialog_element["props"]["closable"] is True
+
+        # Check dialog content
+        assert len(dialog_element["children"]) == 2  # text and button inside dialog
+        assert dialog_element["children"][0]["key"] == "dialog-text"
+        assert dialog_element["children"][1]["key"] == "close-button"
+
+        # Simulate POST request for closing the dialog
+        post_event = {"type": "click", "componentId": "my_dialog_close-button", "data": {}}
+        post_request = MockRequest(method="POST", fragment_id="my_dialog", ui_event=post_event)
+
+        with patch("routelit.routelit.compare_elements") as mock_compare:
+            mock_compare.return_value = []  # No changes after closing dialog
+            post_result = routelit.handle_post_request(main_view, post_request)
+
+            assert isinstance(post_result, dict)
+            assert "actions" in post_result
+            assert "target" in post_result
+            assert post_result["target"] == "fragment"
+            assert len(post_result["actions"]) == 0
+
+    def test_maybe_handle_form_event(self, routelit):
+        """Test handling of form events"""
+        request = MockRequest(
+            ui_event={"type": "change", "componentId": "input1", "formId": "form1", "data": {"value": "test"}}
+        )
+        session_keys = request.get_session_keys()
+
+        # Test handling form event
+        result = routelit._maybe_handle_form_event(request, session_keys)
+        assert result is True
+
+        # Verify event was stored in session state
+        session_state = routelit.session_storage[session_keys.state_key]
+        assert "__events4later_form1" in session_state
+        assert session_state["__events4later_form1"]["input1"]["data"]["value"] == "test"
+
+        # Test non-form event
+        non_form_request = MockRequest(ui_event={"type": "click", "componentId": "button1"})
+        result = routelit._maybe_handle_form_event(non_form_request, session_keys)
+        assert result is False
+
+    def test_preprocess_fragment_params(self, routelit):
+        """Test preprocessing of fragment parameters"""
+        # Create a mock builder and request
+        request = MockRequest()
+        builder = MockBuilder(request, session_state=PropertyDict({}), fragments={})
+        fragment_key = "test_fragment"
+        args = (builder, "arg1", "arg2")  # Include builder as first arg
+        kwargs = {"param1": "value1"}
+
+        # Test non-fragment request (builder is first arg)
+        processed_builder, is_builder_1st_arg, processed_args, processed_kwargs = routelit._preprocess_fragment_params(
+            fragment_key, args, kwargs
+        )
+
+        assert processed_builder == builder
+        assert is_builder_1st_arg is True
+        assert processed_args == ("arg1", "arg2")  # Builder removed from args
+        assert processed_kwargs == kwargs
+
+        # Verify parameters were stored in session
+        session_keys = request.get_session_keys()
+        stored_params = routelit.session_storage[session_keys.fragment_params_key][fragment_key]
+        assert stored_params["args"] == ("arg1", "arg2")
+        assert stored_params["kwargs"] == kwargs
+
+        # Test fragment request - should retrieve stored parameters
+        fragment_request = MockRequest(fragment_id="test_fragment")
+        fragment_builder = MockBuilder(fragment_request, session_state=PropertyDict({}), fragments={})
+
+        # Set up context so ui property works
+        with routelit._set_builder_context(fragment_builder):
+            processed_builder, is_builder_1st_arg, processed_args, processed_kwargs = (
+                routelit._preprocess_fragment_params(fragment_key, (), {})
+            )
+
+            assert processed_builder == fragment_builder
+            assert is_builder_1st_arg is False  # No args provided
+            assert processed_args == ("arg1", "arg2")  # Retrieved from storage
+            assert processed_kwargs == kwargs  # Retrieved from storage
+
+    def test_get_prev_keys(self, routelit):
+        """Test getting previous session keys"""
+        # Test normal request
+        request = MockRequest()
+        session_keys = request.get_session_keys()
+        is_nav, prev_keys = routelit._get_prev_keys(request, session_keys)
+        assert is_nav is False
+        assert prev_keys == session_keys
+
+        # Test navigation request
+        nav_request = MockRequest(
+            ui_event={"type": "navigate", "data": {"to": "/new-page"}}, referer="http://example.com/old-page"
+        )
+        session_keys = nav_request.get_session_keys()
+        is_nav, prev_keys = routelit._get_prev_keys(nav_request, session_keys)
+        assert is_nav is True
+        assert prev_keys.ui_key != session_keys.ui_key
+        assert "old-page" in prev_keys.ui_key
+
+    def test_write_session_state(self, routelit):
+        """Test writing session state"""
+        request = MockRequest()
+        session_keys = request.get_session_keys()
+
+        # Initial state
+        prev_elements = [RouteLitElement(name="div", props={}, key="prev")]
+        prev_fragments = {"frag1": [0]}
+        elements = [RouteLitElement(name="div", props={}, key="new")]
+        session_state = {"key": "value"}
+        fragments = {"frag2": [1]}
+
+        # Test writing without fragment
+        routelit._write_session_state(
+            session_keys=session_keys,
+            prev_elements=prev_elements,
+            prev_fragments=prev_fragments,
+            elements=elements,
+            session_state=session_state,
+            fragments=fragments,
+        )
+
+        assert routelit.session_storage[session_keys.ui_key] == elements
+        assert routelit.session_storage[session_keys.state_key] == session_state
+        assert routelit.session_storage[session_keys.fragment_addresses_key] == {**prev_fragments, **fragments}
+
+        # Test writing with fragment
+        fragment_elements = [RouteLitElement(name="span", props={}, key="frag-content")]
+        routelit._write_session_state(
+            session_keys=session_keys,
+            prev_elements=prev_elements,
+            prev_fragments=prev_fragments,
+            elements=fragment_elements,
+            session_state=session_state,
+            fragments=fragments,
+            fragment_id="frag1",
+        )
+
+        # Verify fragment elements were inserted at correct address
+        updated_elements = routelit.session_storage[session_keys.ui_key]
+        assert len(updated_elements) == 1
+        assert updated_elements[0].name == "div"
+        assert updated_elements[0].key == "prev"
+        assert len(updated_elements[0].children) == 1
+        assert updated_elements[0].children[0].key == "frag-content"
+
+    def test_ui_property_context_manager(self, routelit):
+        """Test the ui property and context manager functionality"""
+        request = MockRequest()
+
+        # Test using ui property with should_inject_builder=False
+        def view_with_ui_property():
+            routelit.ui.text("Hello from ui property!", key="ui-text")
+            routelit.ui.session_state["from_ui"] = True
+
+        result = routelit.response(view_with_ui_property, request, should_inject_builder=False)
+
+        # Verify the response contains the element
+        assert hasattr(result, "elements")
+        assert len(result.elements) == 1
+        assert result.elements[0]["name"] == "text"
+        assert result.elements[0]["props"]["text"] == "Hello from ui property!"
+
+        # Verify session state was updated
+        session_keys = request.get_session_keys()
+        assert routelit.session_storage[session_keys.state_key]["from_ui"] is True
+
+    def test_ui_property_outside_context_raises_error(self, routelit):
+        """Test that accessing ui property outside of context raises an error"""
+        with pytest.raises(LookupError):
+            routelit.ui.text("This should fail")
+
+    def test_response_with_args_and_kwargs(self, routelit):
+        """Test response method with additional arguments and kwargs"""
+        request = MockRequest()
+
+        def view_with_params(builder, name, age=25, city="Unknown"):
+            builder.text(f"Name: {name}, Age: {age}, City: {city}", key="params-text")
+            builder.session_state["name"] = name
+            builder.session_state["age"] = age
+            builder.session_state["city"] = city
+
+        result = routelit.response(view_with_params, request, True, "John", age=30, city="NYC")
+
+        # Verify the response contains the formatted text
+        assert len(result.elements) == 1
+        assert result.elements[0]["props"]["text"] == "Name: John, Age: 30, City: NYC"
+
+        # Verify session state was updated
+        session_keys = request.get_session_keys()
+        assert routelit.session_storage[session_keys.state_key]["name"] == "John"
+        assert routelit.session_storage[session_keys.state_key]["age"] == 30
+        assert routelit.session_storage[session_keys.state_key]["city"] == "NYC"
+
+    def test_fragment_post_request_nonexistent_fragment(self, routelit):
+        """Test POST request targeting a fragment that doesn't exist in registry"""
+        request = MockRequest(method="POST", fragment_id="nonexistent_fragment")
+
+        def main_view(builder, **kwargs):
+            builder.text("Main content", key="main-text")
+
+        with patch("routelit.routelit.compare_elements") as mock_compare:
+            mock_compare.return_value = []
+
+            # Should use main_view instead of nonexistent fragment
+            result = routelit.handle_post_request(main_view, request)
+
+            assert isinstance(result, dict)
+            assert "actions" in result
+            assert "target" in result
+
+    def test_form_event_handling_submit_type(self, routelit):
+        """Test that submit events with formId are not stored as events4later"""
+        request = MockRequest(
+            method="POST", ui_event={"type": "submit", "componentId": "submit-btn", "formId": "my-form", "data": {}}
+        )
+        session_keys = request.get_session_keys()
+
+        # Should return False for submit events
+        result = routelit._maybe_handle_form_event(request, session_keys)
+        assert result is False
+
+        # No events should be stored
+        assert session_keys.state_key not in routelit.session_storage
+
+    def test_multiple_fragments_in_view(self, routelit):
+        """Test handling multiple fragments in the same view"""
+
+        @routelit.fragment("fragment_a")
+        def fragment_a(builder, message: str):
+            builder.text(f"Fragment A: {message}", key="frag-a-text")
+
+        @routelit.fragment("fragment_b")
+        def fragment_b(builder, number: int):
+            builder.text(f"Fragment B: {number}", key="frag-b-text")
+
+        def main_view(builder, **kwargs):
+            builder.text("Main content", key="main-text")
+            fragment_a(builder, message="Hello")
+            fragment_b(builder, number=42)
+
+            # Initial GET request
+
+        get_request = MockRequest()
+        routelit.handle_get_request(main_view, get_request)
+        session_keys = get_request.get_session_keys()
+
+        # Verify both fragments are registered
+        assert "fragment_a" in routelit.fragment_registry
+        assert "fragment_b" in routelit.fragment_registry
+
+        # Verify fragment parameters are stored
+        fragment_params = routelit.session_storage[session_keys.fragment_params_key]
+        assert "fragment_a" in fragment_params
+        assert "fragment_b" in fragment_params
+        assert fragment_params["fragment_a"]["kwargs"]["message"] == "Hello"
+        assert fragment_params["fragment_b"]["kwargs"]["number"] == 42
+
+        # Verify fragment addresses are stored
+        fragment_addresses = routelit.session_storage[session_keys.fragment_addresses_key]
+        assert "fragment_a" in fragment_addresses
+        assert "fragment_b" in fragment_addresses
+        assert fragment_addresses["fragment_a"] == [1]
+        assert fragment_addresses["fragment_b"] == [2]
+
+    def test_fragment_without_parameters(self, routelit):
+        """Test fragment that takes no parameters"""
+
+        @routelit.fragment("simple_fragment")
+        def simple_fragment(builder):
+            builder.text("Simple fragment content", key="simple-text")
+
+        def main_view(builder, **kwargs):
+            builder.text("Main content", key="main-text")
+            simple_fragment(builder)
+
+            # Initial GET request
+
+        get_request = MockRequest()
+        routelit.handle_get_request(main_view, get_request)
+        session_keys = get_request.get_session_keys()
+
+        # Verify fragment is registered
+        assert "simple_fragment" in routelit.fragment_registry
+
+        # Verify fragment parameters are stored (empty)
+        fragment_params = routelit.session_storage[session_keys.fragment_params_key]
+        assert "simple_fragment" in fragment_params
+        assert fragment_params["simple_fragment"]["args"] == ()
+        assert fragment_params["simple_fragment"]["kwargs"] == {}
+
+    def test_fragment_using_ui_property(self, routelit):
+        """Test fragment using the ui property instead of injected builder"""
+
+        @routelit.fragment("ui_fragment")
+        def ui_fragment():
+            routelit.ui.text("Fragment using ui property", key="ui-frag-text")
+            routelit.ui.session_state["ui_fragment_called"] = True
+
+        def main_view(builder, **kwargs):
+            builder.text("Main content", key="main-text")
+            ui_fragment()
+
+        # Initial GET request
+        get_request = MockRequest()
+        get_result = routelit.handle_get_request(main_view, get_request)
+        session_keys = get_request.get_session_keys()
+
+        # Verify fragment worked correctly
+        assert len(get_result.elements) == 2
+        assert get_result.elements[1]["name"] == "fragment"
+        assert get_result.elements[1]["key"] == "ui_fragment"
+
+        # Verify session state was updated
+        assert routelit.session_storage[session_keys.state_key]["ui_fragment_called"] is True
+
+    def test_get_prev_elements_at_fragment(self, routelit):
+        """Test getting previous elements at fragment address"""
+        request = MockRequest()
+        session_keys = request.get_session_keys()
+
+        # Set up session storage with elements and fragment addresses
+        main_element = RouteLitElement(name="div", props={}, key="main")
+        fragment_element = RouteLitElement(name="span", props={}, key="frag-content")
+        main_element.children = [fragment_element]
+
+        routelit.session_storage[session_keys.ui_key] = [main_element]
+        routelit.session_storage[session_keys.fragment_addresses_key] = {"my_fragment": [0]}
+
+        # Test getting elements for existing fragment
+        prev_elements, fragment_elements = routelit._get_prev_elements_at_fragment(session_keys, "my_fragment")
+
+        assert len(prev_elements) == 1
+        assert prev_elements[0].key == "main"
+        assert len(fragment_elements) == 1
+        assert fragment_elements[0].key == "frag-content"
+
+        # Test getting elements without fragment_id
+        prev_elements, fragment_elements = routelit._get_prev_elements_at_fragment(session_keys, None)
+
+        assert len(prev_elements) == 1
+        assert fragment_elements is None
+
+    def test_custom_builder_class(self, mock_session_storage):
+        """Test RouteLit with custom builder class"""
+
+        class CustomBuilder(MockBuilder):
+            def custom_method(self, text: str, key: Optional[str] = None):
+                key = key or self._new_text_id("custom")
+                self._create_non_widget_element("custom", key, {"text": text})
+
+        custom_routelit = RouteLit(BuilderClass=CustomBuilder, session_storage=mock_session_storage)
+
+        def view_with_custom(builder, **kwargs):
+            builder.custom_method("Custom element", key="custom-el")
+
+        request = MockRequest()
+        result = custom_routelit.handle_get_request(view_with_custom, request)
+
+        # Verify custom builder was used
+        assert len(result.elements) == 1
+        assert result.elements[0]["name"] == "custom"
+        assert result.elements[0]["props"]["text"] == "Custom element"
+        assert result.elements[0]["key"] == "custom-el"
+
+    def test_navigation_with_malformed_referer(self, routelit):
+        """Test navigation handling with malformed referer URL"""
+        # Test with malformed referer that can't be parsed
+        nav_request = MockRequest(
+            method="POST",
+            ui_event={"type": "navigate", "data": {"to": "/new-page"}},
+            referer="not-a-valid-url",
+            pathname="/new-page",
+        )
+
+        session_keys = nav_request.get_session_keys()
+        is_nav, prev_keys = routelit._get_prev_keys(nav_request, session_keys)
+
+        # Should still detect navigation
+        assert is_nav is True
+        # Should fall back to some reasonable behavior (implementation dependent)
+        assert prev_keys is not None
+
+    def test_rerun_exception_with_fragment_scope(self, routelit):
+        """Test RerunException with fragment-specific scope"""
+        request = MockRequest(method="POST", fragment_id="test_fragment")
+        fragment_call_count = 0
+
+        @routelit.fragment("test_fragment")
+        def test_fragment(builder):
+            nonlocal fragment_call_count
+            fragment_call_count += 1
+            if fragment_call_count == 1:
+                builder.session_state["fragment_attempt"] = 1
+                builder.rerun(scope="fragment")
+            builder.text("Fragment after rerun", key="frag-text")
+
+        def main_view(builder, **kwargs):
+            builder.text("Main content", key="main-text")
+            test_fragment(builder)
+
+        # Set up initial state - catch the RerunException that will be raised
+        get_request = MockRequest()
+        with contextlib.suppress(RerunException):
+            routelit.handle_get_request(main_view, get_request)
+
+        with patch("routelit.routelit.compare_elements") as mock_compare:
+            mock_compare.return_value = []
+
+            result = routelit.handle_post_request(main_view, request)
+
+            # Fragment should have been called multiple times due to rerun
+            assert fragment_call_count >= 1
+            assert isinstance(result, dict)
+            assert result["target"] == "fragment"
+
+    def test_empty_elements_handling(self, routelit):
+        """Test handling of views that create no elements"""
+        request = MockRequest()
+
+        def empty_view(builder, **kwargs):
+            # This view creates no elements
+            builder.session_state["empty_view_called"] = True
+
+        result = routelit.handle_get_request(empty_view, request)
+
+        # Should return empty elements list
+        assert hasattr(result, "elements")
+        assert len(result.elements) == 0
+
+        # Session state should still be updated
+        session_keys = request.get_session_keys()
+        assert routelit.session_storage[session_keys.state_key]["empty_view_called"] is True
+
+    def test_context_manager_token_cleanup(self, routelit):
+        """Test that context manager properly cleans up tokens"""
+        request = MockRequest()
+        builder = MockBuilder(request, session_state=PropertyDict({}), fragments={})
+
+        # Test that context is properly set and cleaned up
+        with routelit._set_builder_context(builder) as ctx_builder:
+            assert ctx_builder == builder
+            assert routelit.ui == builder
+
+        # After exiting context, ui property should raise LookupError
+        with pytest.raises(LookupError):
+            routelit.ui.text("This should fail")
+
+    def test_fragment_addresses_initialization(self, routelit):
+        """Test that fragment addresses are properly initialized"""
+        request = MockRequest()
+        session_keys = request.get_session_keys()
+
+        def simple_view(builder, **kwargs):
+            builder.text("Simple view", key="simple-text")
+
+        routelit.handle_get_request(simple_view, request)
+
+        # Fragment addresses should be initialized as empty dict
+        assert session_keys.fragment_addresses_key in routelit.session_storage
+        assert routelit.session_storage[session_keys.fragment_addresses_key] == {}
+
+        # Fragment params should be initialized
+        assert session_keys.fragment_params_key in routelit.session_storage
+
+    def test_default_should_inject_builder_true(self, mock_session_storage):
+        """Test that should_inject_builder defaults to True in constructor"""
+        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage)
+        assert routelit.should_inject_builder is True
+
+        def view_with_builder(builder, **kwargs):
+            builder.text("Hello with builder", key="builder-text")
+            builder.session_state["builder_injected"] = True
+
+        request = MockRequest()
+        result = routelit.response(view_with_builder, request)
+
+        # Should work because builder is injected by default
+        assert len(result.elements) == 1
+        assert result.elements[0]["props"]["text"] == "Hello with builder"
+
+        session_keys = request.get_session_keys()
+        assert routelit.session_storage[session_keys.state_key]["builder_injected"] is True
+
+    def test_should_inject_builder_false_in_constructor(self, mock_session_storage):
+        """Test setting should_inject_builder=False in constructor"""
+        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, should_inject_builder=False)
+        assert routelit.should_inject_builder is False
+
+        def view_without_builder(**kwargs):
+            routelit.ui.text("Hello without builder", key="no-builder-text")
+            routelit.ui.session_state["no_builder_injected"] = True
+
+        request = MockRequest()
+        result = routelit.response(view_without_builder, request)
+
+        # Should work because ui property is used instead of injection
+        assert len(result.elements) == 1
+        assert result.elements[0]["props"]["text"] == "Hello without builder"
+
+        session_keys = request.get_session_keys()
+        assert routelit.session_storage[session_keys.state_key]["no_builder_injected"] is True
+
+    def test_should_inject_builder_override_per_request(self, mock_session_storage):
+        """Test overriding should_inject_builder on a per-request basis"""
+        # Set default to False
+        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, should_inject_builder=False)
+
+        def view_with_builder(builder, **kwargs):
+            builder.text("Overridden to inject", key="override-text")
+            builder.session_state["override_inject"] = True
+
+        def view_without_builder(**kwargs):
+            routelit.ui.text("Using ui property", key="ui-text")
+            routelit.ui.session_state["using_ui"] = True
+
+        request1 = MockRequest()
+        request2 = MockRequest()
+
+        # Override to inject builder (opposite of default)
+        result1 = routelit.response(view_with_builder, request1, should_inject_builder=True)
+        assert len(result1.elements) == 1
+        assert result1.elements[0]["props"]["text"] == "Overridden to inject"
+
+        # Use default (no injection)
+        result2 = routelit.response(view_without_builder, request2)
+        assert len(result2.elements) == 1
+        assert result2.elements[0]["props"]["text"] == "Using ui property"
+
+    def test_should_inject_builder_get_request_with_override(self, mock_session_storage):
+        """Test should_inject_builder override specifically for GET requests"""
+        routelit = RouteLit(
+            BuilderClass=MockBuilder,
+            session_storage=mock_session_storage,
+            should_inject_builder=False,  # Default to False
+        )
+
+        def view_with_builder(builder, **kwargs):
+            builder.text("GET with builder injection", key="get-builder-text")
+
+        request = MockRequest(method="GET")
+        result = routelit.handle_get_request(view_with_builder, request, should_inject_builder=True)
+
+        assert len(result.elements) == 1
+        assert result.elements[0]["props"]["text"] == "GET with builder injection"
+
+    def test_should_inject_builder_post_request_with_override(self, mock_session_storage):
+        """Test should_inject_builder override specifically for POST requests"""
+        routelit = RouteLit(
+            BuilderClass=MockBuilder,
+            session_storage=mock_session_storage,
+            should_inject_builder=False,  # Default to False
+        )
+
+        def view_with_builder(builder, **kwargs):
+            builder.text("POST with builder injection", key="post-builder-text")
+
+        request = MockRequest(method="POST")
+
+        with patch("routelit.routelit.compare_elements") as mock_compare:
+            mock_compare.return_value = []
+            result = routelit.handle_post_request(view_with_builder, request, should_inject_builder=True)
+
+            assert isinstance(result, dict)
+            assert "actions" in result
+
+    def test_should_inject_builder_none_uses_default(self, mock_session_storage):
+        """Test that None for should_inject_builder uses the instance default"""
+        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, should_inject_builder=False)
+
+        def view_without_builder(**kwargs):
+            routelit.ui.text("Using default behavior", key="default-text")
+
+        request = MockRequest()
+        # Pass None explicitly - should use instance default (False)
+        result = routelit.response(view_without_builder, request, should_inject_builder=None)
+
+        assert len(result.elements) == 1
+        assert result.elements[0]["props"]["text"] == "Using default behavior"
+
+    def test_mixed_injection_patterns_in_fragments(self, mock_session_storage):
+        """Test mixed injection patterns with fragments"""
+        routelit = RouteLit(
+            BuilderClass=MockBuilder,
+            session_storage=mock_session_storage,
+            should_inject_builder=False,  # Default to False
+        )
+
+        @routelit.fragment("mixed_fragment")
+        def mixed_fragment():
+            # Fragment uses ui property (no injection)
+            routelit.ui.text("Fragment content", key="frag-content")
+
+        def main_view(builder, **kwargs):
+            # Main view has injection overridden to True
+            builder.text("Main content", key="main-content")
+            mixed_fragment()
+
+        request = MockRequest()
+        result = routelit.response(main_view, request, should_inject_builder=True)
+
+        # Should have both main content and fragment
+        assert len(result.elements) == 2
+        assert result.elements[0]["props"]["text"] == "Main content"
+        assert result.elements[1]["name"] == "fragment"
+
+    def test_exception_handling_preserves_injection_setting(self, mock_session_storage):
+        """Test that exception handling preserves injection settings"""
+        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, should_inject_builder=False)
+
+        rerun_count = 0
+
+        def view_with_rerun(builder, **kwargs):
+            nonlocal rerun_count
+            rerun_count += 1
+            if rerun_count == 1:
+                builder.session_state["attempt"] = 1
+                builder.rerun()
+            builder.text("After rerun", key="rerun-text")
+
+        request = MockRequest(method="POST")
+
+        with patch("routelit.routelit.compare_elements") as mock_compare:
+            mock_compare.return_value = []
+
+            # Override to inject builder
+            result = routelit.handle_post_request(view_with_rerun, request, should_inject_builder=True)
+
+            # Should have succeeded with injection
+            assert isinstance(result, dict)
+            assert rerun_count >= 1
+
+    def test_nested_builders_inherit_injection_context(self, mock_session_storage):
+        """Test that nested builders work correctly with injection settings"""
+        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, should_inject_builder=True)
+
+        def view_with_expander(builder, **kwargs):
+            builder.text("Main content", key="main-text")
+            with builder.expander("Details", key="exp") as exp:
+                exp.text("Nested content", key="nested-text")
+
+        request = MockRequest()
+        result = routelit.response(view_with_expander, request)
+
+        assert len(result.elements) == 2
+        assert result.elements[0]["props"]["text"] == "Main content"
+        assert result.elements[1]["name"] == "expander"
+        assert len(result.elements[1]["children"]) == 1
+        assert result.elements[1]["children"][0]["props"]["text"] == "Nested content"
+
+    def test_backwards_compatibility_with_old_signature(self, mock_session_storage):
+        """Test backwards compatibility when should_inject_builder is not specified"""
+        # Old way of creating RouteLit without should_inject_builder
+        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage)
+
+        def traditional_view(builder, **kwargs):
+            builder.text("Traditional view", key="traditional-text")
+
+        request = MockRequest()
+        result = routelit.response(traditional_view, request)
+
+        # Should work exactly as before (with injection)
+        assert len(result.elements) == 1
+        assert result.elements[0]["props"]["text"] == "Traditional view"

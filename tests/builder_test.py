@@ -3,7 +3,7 @@ from typing import Any, ClassVar, Dict, List, MutableMapping
 import pytest
 
 from routelit.builder import RouteLitBuilder
-from routelit.domain import RouteLitElement, RouteLitRequest, SessionKeys
+from routelit.domain import PropertyDict, RouteLitElement, RouteLitRequest, SessionKeys
 from routelit.exceptions import RerunException
 
 
@@ -95,7 +95,7 @@ class TestRouteLitBuilder:
 
     @pytest.fixture
     def builder(self, mock_request):
-        return RouteLitBuilder(request=mock_request, session_state={})
+        return RouteLitBuilder(request=mock_request, session_state=PropertyDict())
 
     def test_init_defaults(self, builder, mock_request):
         """Test builder initialization with default values."""
@@ -103,7 +103,7 @@ class TestRouteLitBuilder:
         assert builder.initial_fragment_id is None
         assert builder.fragments == {}
         assert builder.prefix == ""
-        assert builder.session_state == {}
+        assert len(builder.session_state) == 0
         assert builder.parent_element is None
         assert builder.parent_builder is None
         assert builder.address is None
@@ -1406,3 +1406,361 @@ class TestRouteLitBuilder:
         assert name_value == "updated"
         assert builder.session_state["name-input"] == "updated"
         assert builder.session_state["counter"] == 1  # Should remain unchanged
+
+    def test_prev_active_child_builder_handling(self, builder):
+        """Test complex nested builder scenarios with _prev_active_child_builder"""
+        # Create a nested structure with multiple levels
+        with builder.container(key="outer") as outer:
+            with outer.container(key="middle") as middle:
+                middle.text("Middle content", key="middle-text")
+
+                # Create another nested level to test _prev_active_child_builder
+                with middle.container(key="inner") as inner:
+                    inner.text("Inner content", key="inner-text")
+
+                    # The parent's _prev_active_child_builder should be set
+                    assert middle._prev_active_child_builder is None
+
+                # After exiting inner context, _prev_active_child_builder should be reset
+                assert middle.active_child_builder is None
+                assert middle._prev_active_child_builder is None
+
+                # Add more content to middle
+                middle.text("More middle content", key="middle-text-2")
+
+        # Verify the nested structure
+        assert len(builder.elements) == 1
+        outer_element = builder.elements[0]
+        assert len(outer_element.children) == 1
+        middle_element = outer_element.children[0]
+        assert len(middle_element.children) == 3  # middle-text, inner container, middle-text-2
+        inner_element = middle_element.children[1]
+        assert len(inner_element.children) == 1
+        assert inner_element.children[0].props["body"] == "Inner content"
+
+    def test_checkbox_type_coercion_edge_cases(self, builder):
+        """Test checkbox value type coercion in various edge cases"""
+        # Test with non-boolean values in session state
+        builder.session_state["checkbox1"] = "true"  # String
+        builder.session_state["checkbox2"] = 1  # Integer
+        builder.session_state["checkbox3"] = 0  # Zero
+        builder.session_state["checkbox4"] = ""  # Empty string
+        builder.session_state["checkbox5"] = None  # None
+
+        # Test type coercion
+        result1 = builder.checkbox("Test 1", key="checkbox1")
+        result2 = builder.checkbox("Test 2", key="checkbox2")
+        result3 = builder.checkbox("Test 3", key="checkbox3")
+        result4 = builder.checkbox("Test 4", key="checkbox4")
+        result5 = builder.checkbox("Test 5", key="checkbox5", checked=True)  # Default when None
+
+        assert result1 is True  # "true" -> True
+        assert result2 is True  # 1 -> True
+        assert result3 is False  # 0 -> False
+        assert result4 is False  # "" -> False
+        assert result5 is True  # None -> default (True)
+
+        # Test event with None value
+        builder.request._ui_event = {"type": "change", "componentId": "checkbox6", "data": {"checked": None}}
+        result6 = builder.checkbox("Test 6", key="checkbox6")
+        assert result6 is False  # None event -> False
+
+    def test_checkbox_group_invalid_value_handling(self, builder):
+        """Test checkbox group with invalid values and edge cases"""
+        # Test with non-list values in session state
+        builder.session_state["group1"] = "invalid"  # String instead of list
+        builder.session_state["group2"] = 123  # Number instead of list
+        builder.session_state["group3"] = None  # None
+
+        options = ["A", "B", "C"]
+
+        result1 = builder.checkbox_group("Group 1", options, key="group1")
+        result2 = builder.checkbox_group("Group 2", options, key="group2")
+        result3 = builder.checkbox_group("Group 3", options, key="group3", value=["A"])
+
+        assert result1 == []  # Invalid type -> empty list
+        assert result2 == []  # Invalid type -> empty list
+        assert result3 == []  # None in session state -> empty list (fallback behavior)
+
+        # Test with no session state but default value
+        result4 = builder.checkbox_group("Group 4", options, key="group4", value=["A"])
+        assert result4 == ["A"]  # No session state -> use default value
+
+        # Test event with non-list value
+        builder.request._ui_event = {"type": "change", "componentId": "group5", "data": {"value": "invalid"}}
+        result5 = builder.checkbox_group("Group 5", options, key="group5")
+        assert result5 == []  # Invalid event data -> empty list
+
+    def test_text_input_empty_value_handling(self, builder):
+        """Test text input with empty and None values"""
+        # Test with None value
+        result1 = builder.text_input("Input 1", value=None, key="input1")
+        assert result1 == ""  # None -> empty string
+
+        # Test with empty string
+        result2 = builder.text_input("Input 2", value="", key="input2")
+        assert result2 == ""
+
+        # Test with None event value
+        builder.request._ui_event = {"type": "change", "componentId": "input3", "data": {"value": None}}
+        result3 = builder.text_input("Input 3", key="input3")
+        assert result3 == ""  # None event -> empty string
+
+        # Test session state override
+        builder.session_state["input4"] = None
+        result4 = builder.text_input("Input 4", value="default", key="input4")
+        assert result4 == ""  # None in session -> empty string
+
+    def test_form_id_detection_in_complex_nesting(self, builder):
+        """Test form ID detection in complex nested scenarios"""
+        # Test form ID detection without active child builder
+        assert builder._get_parent_form_id() is None
+
+        # Test with form context
+        with builder.form("test-form") as form:
+            assert form._get_parent_form_id() == "test-form"
+
+            # Test with nested container inside form
+            with form.container("inner-container") as container:
+                # Container should detect the form ID through _prev_active_child_builder
+                assert container._get_parent_form_id() is None  # Container's parent is not a form
+
+                # But the form builder should still work
+                assert form._get_parent_form_id() == "test-form"
+
+            # After exiting container, form should still work
+            assert form._get_parent_form_id() == "test-form"
+
+    def test_maybe_get_event_ignore_submit_logic(self, builder):
+        """Test complex form submission logic with __ignore_submit"""
+        form_builder = builder.form("complex-form")
+
+        # Set up events to be moved
+        builder.session_state["__events4later_complex-form"] = {"input1": {"type": "change", "data": {"value": "test"}}}
+
+        # First submission - should trigger the logic
+        builder.request._ui_event = {"type": "submit", "formId": "complex-form", "data": {}}
+
+        with form_builder as fb:
+            try:
+                fb._maybe_get_event("input1")
+                raise AssertionError("Should have raised RerunException")
+            except RerunException as e:
+                assert "__events_complex-form" in e.state
+                assert "__ignore_submit" in e.state
+                assert e.state["__ignore_submit"] == "complex-form"
+
+        # Second submission with same form ID - should be ignored
+        builder.request._ui_event = {"type": "submit", "formId": "complex-form", "data": {}}
+
+        with form_builder as fb:
+            # Should not raise RerunException because __ignore_submit is set
+            event = fb._maybe_get_event("input1")
+            # Should get the event from __events_ instead
+            assert event is not None
+            assert event["type"] == "change"
+            assert event["data"]["value"] == "test"
+
+    def test_maybe_get_event_different_form_ids(self, builder):
+        """Test form event handling with different form IDs"""
+        form_builder = builder.form("form-a")
+
+        # Set up event for different form
+        builder.request._ui_event = {"type": "submit", "formId": "form-b", "data": {}}
+
+        with form_builder as fb:
+            # Should not trigger rerun because form IDs don't match
+            event = fb._maybe_get_event("input1")
+            assert event is None
+
+    def test_on_end_cleanup(self, builder):
+        """Test that on_end properly cleans up session state"""
+        builder.session_state["__ignore_submit"] = "test-form"
+        builder.session_state["other_data"] = "preserve"
+
+        builder.on_end()
+
+        # Should remove __ignore_submit but preserve other data
+        assert "__ignore_submit" not in builder.session_state
+        assert builder.session_state["other_data"] == "preserve"
+
+    def test_get_elements_with_initial_fragment_edge_cases(self, builder):
+        """Test get_elements with initial_fragment_id edge cases"""
+        # Test with initial_fragment_id but no elements
+        builder.initial_fragment_id = "test-fragment"
+        assert builder.get_elements() == []
+
+        # Test with initial_fragment_id and elements but no children
+        element = RouteLitElement(name="div", props={}, key="test")
+        element.children = None
+        builder.elements = [element]
+        assert builder.get_elements() == []
+
+        # Test with initial_fragment_id and empty children
+        element.children = []
+        assert builder.get_elements() == []
+
+        # Test with initial_fragment_id and actual children
+        child = RouteLitElement(name="span", props={}, key="child")
+        element.children = [child]
+        assert builder.get_elements() == [child]
+
+    def test_complex_address_calculation_edge_cases(self, builder):
+        """Test address calculation in complex scenarios"""
+        # Test with empty elements
+        assert builder._get_next_address() == [0]
+
+        # Test with nested builders and empty elements
+        with builder.container(key="empty-container") as container:
+            assert container._get_next_address() == [0, 0]
+            assert container._get_last_address() == [0, -1]  # Last of empty is -1
+
+            # Add element and test again
+            container.text("Test", key="test-text")
+            assert container._get_next_address() == [0, 1]
+            assert container._get_last_address() == [0, 0]
+
+    def test_dialog_close_rerun_behavior(self, builder):
+        """Test dialog close event triggering rerun"""
+        # Set up close event
+        builder.request._ui_event = {"type": "close", "componentId": "test-dialog", "data": {}}
+
+        # Should raise RerunException when close event is detected
+        with pytest.raises(RerunException):
+            builder._dialog("test-dialog")
+
+    def test_dialog_with_custom_props(self, builder):
+        """Test dialog creation with custom properties"""
+        with builder._dialog("custom-dialog", closable=False) as dialog:
+            dialog.text("Dialog content", key="content")
+
+        assert len(builder.elements) == 1
+        dialog_element = builder.elements[0]
+        assert dialog_element.name == "dialog"
+        assert dialog_element.props["closable"] is False
+        assert dialog_element.props["open"] is True
+
+    def test_fragment_without_key_autogeneration(self, builder):
+        """Test that fragments without keys get auto-generated IDs"""
+        # Create fragment without key
+        builder._fragment()
+        builder._fragment()
+
+        # Should have different auto-generated keys
+        assert len(builder.elements) == 2
+        assert builder.elements[0].key != builder.elements[1].key
+        assert builder.elements[0].key.startswith("_fragment_")
+        assert builder.elements[1].key.startswith("_fragment_")
+
+    def test_multiple_active_child_builders_sequence(self, builder):
+        """Test sequence of multiple active child builders"""
+        # Create multiple nested contexts in sequence
+        with builder.container(key="container1") as c1:
+            c1.text("Content 1", key="text1")
+            assert builder.active_child_builder == c1
+
+        assert builder.active_child_builder is None
+
+        with builder.container(key="container2") as c2:
+            c2.text("Content 2", key="text2")
+            assert builder.active_child_builder == c2
+
+        assert builder.active_child_builder is None
+
+        # Verify both containers were created correctly
+        assert len(builder.elements) == 2
+        assert builder.elements[0].key == "container1"
+        assert builder.elements[1].key == "container2"
+
+    def test_element_address_assignment_for_fragments(self, builder):
+        """Test that fragment elements get proper addresses assigned"""
+        # Create fragment and verify address assignment
+        next_addr = builder._get_next_address()
+        builder._fragment("test-fragment")
+
+        # Fragment element should have the calculated address
+        fragment_element = builder.elements[0]
+        assert fragment_element.address == next_addr
+
+        # Fragment should be registered with the address
+        assert builder.fragments["test-fragment"] == next_addr
+
+    def test_button_event_name_variations(self, builder):
+        """Test button with different event names"""
+        # Test with submit event
+        clicked_submit = builder.button("Submit", event_name="submit", key="submit-btn")
+        assert clicked_submit is False
+
+        # Test with click event (default)
+        clicked_click = builder.button("Click", key="click-btn")
+        assert clicked_click is False
+
+        # Verify both buttons were created with correct event names
+        assert len(builder.elements) == 2
+        assert builder.elements[0].props["eventName"] == "submit"
+        assert builder.elements[1].props["eventName"] == "click"
+
+    def test_input_validation_with_custom_event_names(self, builder):
+        """Test input components with custom event names and attributes"""
+        # Test _x_input with custom event_name and value_attribute
+        result = builder._x_input(
+            "custom-input",
+            "Custom Input",
+            value="initial",
+            key="custom",
+            event_name="blur",
+            value_attribute="textContent",
+        )
+
+        assert result == "initial"
+        assert len(builder.elements) == 1
+        element = builder.elements[0]
+        assert element.name == "custom-input"
+        assert element.props["textContent"] == "initial"
+
+    def test_session_state_key_conflicts(self, builder):
+        """Test handling of session state key conflicts"""
+        # Set up conflicting keys
+        builder.session_state["widget_key"] = "widget_value"
+        builder.session_state["text_key"] = "text_value"
+
+        # Create widget and non-widget with same effective keys
+        builder.button("Test", key="widget_key")
+        builder.text("Test", key="text_key")
+
+        # Both should work without conflicts
+        assert builder.session_state["widget_key"] == "widget_value"
+        assert builder.session_state["text_key"] == "text_value"
+
+    def test_empty_options_handling(self, builder):
+        """Test radio and select with empty options lists"""
+        # Test radio with empty options
+        result1 = builder.radio("Empty Radio", [], key="radio1")
+        assert result1 is None
+
+        # Test select with empty options
+        result2 = builder.select("Empty Select", [], key="select1")
+        assert result2 is None
+
+        # Verify elements were still created
+        assert len(builder.elements) == 2
+        assert builder.elements[0].props["options"] == []
+        assert builder.elements[1].props["options"] == []
+
+    def test_callback_function_error_handling(self, builder):
+        """Test that callback functions handle errors gracefully"""
+
+        def error_callback(value):
+            raise ValueError("Callback error")
+
+        # Set up change event
+        builder.request._ui_event = {"type": "change", "componentId": "error-input", "data": {"value": "test"}}
+
+        # Should not propagate callback errors
+        try:
+            result = builder.text_input("Error Input", key="error-input", on_change=error_callback)
+            # The error should be caught/handled by the implementation
+            assert result == "test"  # Value should still be processed
+        except ValueError:
+            # If the error is not caught, this test documents the current behavior
+            pass

@@ -1,22 +1,29 @@
+import contextvars
 import functools
 from collections.abc import MutableMapping
+from contextlib import contextmanager
 from dataclasses import asdict
 from typing import (
     Any,
     Callable,
     Dict,
+    Generator,
+    Generic,
     List,
     Literal,
     Optional,
     Tuple,
     Type,
+    TypeVar,
     Union,
+    cast,
 )
 
 from .assets_utils import get_vite_components_assets
 from .builder import RouteLitBuilder
 from .domain import (
     ActionsResponse,
+    PropertyDict,
     RouteLitElement,
     RouteLitRequest,
     RouteLitResponse,
@@ -27,9 +34,10 @@ from .exceptions import EmptyReturnException, RerunException
 from .utils import compare_elements, get_elements_at_address, set_elements_at_address
 
 ViewFn = Callable[[RouteLitBuilder], Any]
+BuilderType = TypeVar("BuilderType", bound=RouteLitBuilder)
 
 
-class RouteLit:
+class RouteLit(Generic[BuilderType]):
     """
     RouteLit is a class that provides a framework for handling HTTP requests and generating responses in a web application. It manages the routing and view functions that define how the application responds to different requests.
 
@@ -47,15 +55,51 @@ class RouteLit:
 
     def __init__(
         self,
-        BuilderClass: Type[RouteLitBuilder] = RouteLitBuilder,
+        BuilderClass: Type[BuilderType] = RouteLitBuilder,  # type: ignore[assignment]
         session_storage: Optional[MutableMapping[str, Any]] = None,
+        should_inject_builder: bool = True,
     ):
         self.BuilderClass = BuilderClass
         self.session_storage = session_storage or {}
         self.fragment_registry: Dict[str, Callable[[RouteLitBuilder], Any]] = {}
+        self._session_builder_context: contextvars.ContextVar[RouteLitBuilder] = contextvars.ContextVar(
+            "session_builder"
+        )
+        self.should_inject_builder = should_inject_builder
+
+    @contextmanager
+    def _set_builder_context(self, builder: BuilderType) -> Generator[BuilderType, None, None]:
+        try:
+            token = self._session_builder_context.set(builder)
+            yield builder
+        finally:
+            self._session_builder_context.reset(token)
+
+    @property
+    def ui(self) -> BuilderType:
+        """
+        The current builder instance.
+        Use this in conjunction with `response(..., should_inject_builder=False)`
+        example:
+        ```python
+        rl = RouteLit()
+
+        def my_view():
+            rl.ui.text("Hello, world!")
+
+        request = ...
+        response = rl.response(my_view, request, should_inject_builder=False)
+        ```
+        """
+        return cast(BuilderType, self._session_builder_context.get())
 
     def response(
-        self, view_fn: ViewFn, request: RouteLitRequest, *args: Any, **kwargs: Any
+        self,
+        view_fn: ViewFn,
+        request: RouteLitRequest,
+        should_inject_builder: Optional[bool] = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> Union[RouteLitResponse, Dict[str, Any]]:
         """Handle the request and return the response.
 
@@ -91,16 +135,24 @@ class RouteLit:
         ```
         """
         if request.method == "GET":
-            return self.handle_get_request(view_fn, request, *args, **kwargs)
+            return self.handle_get_request(view_fn, request, should_inject_builder, *args, **kwargs)
         elif request.method == "POST":
-            return self.handle_post_request(view_fn, request, *args, **kwargs)
+            return self.handle_post_request(view_fn, request, should_inject_builder, *args, **kwargs)
         else:
             # set custom exception for unsupported request method
             raise ValueError(request.method)
 
     def handle_get_request(
-        self, view_fn: ViewFn, request: RouteLitRequest, *args: Any, **kwargs: Any
+        self,
+        view_fn: ViewFn,
+        request: RouteLitRequest,
+        should_inject_builder: Optional[bool] = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> RouteLitResponse:
+        should_inject_builder = (
+            should_inject_builder if should_inject_builder is not None else self.should_inject_builder
+        )
         session_keys = request.get_session_keys()
         ui_key, state_key, fragment_addresses_key, fragment_params_key = session_keys
         if state_key in self.session_storage:
@@ -108,11 +160,15 @@ class RouteLit:
             self.session_storage.pop(state_key, None)
             self.session_storage.pop(fragment_addresses_key, None)
             self.session_storage.pop(fragment_params_key, None)
-        builder = self.BuilderClass(request, session_state={}, fragments={})
-        view_fn(builder, *args, **kwargs)
+        builder = self.BuilderClass(request, session_state=PropertyDict({}), fragments={})
+        with self._set_builder_context(builder):
+            if should_inject_builder:
+                view_fn(builder, *args, **kwargs)
+            else:
+                view_fn(*args, **kwargs)
         elements = builder.get_elements()
         self.session_storage[ui_key] = elements
-        self.session_storage[state_key] = builder.session_state
+        self.session_storage[state_key] = builder.session_state.get_data()
         self.session_storage[fragment_addresses_key] = builder.get_fragments()
         # Initialize fragment_params_key to empty dict if not present
         if fragment_params_key not in self.session_storage:
@@ -176,8 +232,16 @@ class RouteLit:
         return False
 
     def handle_post_request(
-        self, view_fn: ViewFn, request: RouteLitRequest, *args: Any, **kwargs: Any
+        self,
+        view_fn: ViewFn,
+        request: RouteLitRequest,
+        should_inject_builder: Optional[bool] = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
+        should_inject_builder = (
+            should_inject_builder if should_inject_builder is not None else self.should_inject_builder
+        )
         app_view_fn = view_fn
         session_keys = request.get_session_keys()
         try:
@@ -195,11 +259,15 @@ class RouteLit:
             prev_fragments = self.session_storage.get(prev_session_keys.fragment_addresses_key, {})
             builder = self.BuilderClass(
                 request,
-                session_state=prev_session_state,
+                session_state=PropertyDict(prev_session_state),
                 fragments=prev_fragments,
                 initial_fragment_id=fragment_id,
             )
-            view_fn(builder, *args, **kwargs)
+            with self._set_builder_context(builder):
+                if should_inject_builder:
+                    view_fn(builder, *args, **kwargs)
+                else:
+                    view_fn(*args, **kwargs)
             builder.on_end()
             elements = builder.get_elements()
             self._write_session_state(
@@ -207,7 +275,7 @@ class RouteLit:
                 prev_elements=prev_elements,
                 prev_fragments=prev_fragments,
                 elements=elements,
-                session_state=builder.session_state,
+                session_state=builder.session_state.get_data(),
                 fragments=builder.get_fragments(),
                 fragment_id=fragment_id,
             )
@@ -220,9 +288,9 @@ class RouteLit:
         except RerunException as e:
             self.session_storage[session_keys.state_key] = e.state
             if e.scope == "app":
-                return self.handle_post_request(app_view_fn, request, *args, **kwargs)
+                return self.handle_post_request(app_view_fn, request, should_inject_builder, *args, **kwargs)
             else:
-                return self.handle_post_request(view_fn, request, *args, **kwargs)
+                return self.handle_post_request(view_fn, request, should_inject_builder, *args, **kwargs)
         except EmptyReturnException:
             # No need to return anything
             return asdict(ActionsResponse(actions=[], target="app"))
@@ -261,8 +329,12 @@ class RouteLit:
         self.fragment_registry[key] = fragment
 
     def _preprocess_fragment_params(
-        self, rl: RouteLitBuilder, fragment_key: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]
-    ) -> Tuple[Tuple[Any, ...], Dict[str, Any]]:
+        self, fragment_key: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]
+    ) -> Tuple[BuilderType, bool, Tuple[Any, ...], Dict[str, Any]]:
+        is_builder_1st_arg = args is not None and len(args) > 0 and isinstance(args[0], RouteLitBuilder)
+        rl: BuilderType = cast(RouteLitBuilder, args[0]) if is_builder_1st_arg else self.ui  # type: ignore[assignment]
+        if is_builder_1st_arg:
+            args = args[1:]
         is_fragment_request = rl.request.fragment_id is not None
         session_keys = rl.request.get_session_keys()
         if not is_fragment_request:
@@ -279,7 +351,7 @@ class RouteLit:
             args = fragment_params.get("args", [])
             kwargs = fragment_params.get("kwargs", {})
 
-        return args, kwargs
+        return rl, is_builder_1st_arg, args, kwargs
 
     def fragment(self, key: Optional[str] = None) -> Callable[[ViewFn], ViewFn]:
         """
@@ -298,8 +370,13 @@ class RouteLit:
         rl = RouteLit()
 
         @rl.fragment()
-        def my_fragment(rl: RouteLitBuilder):
-            rl.text("Hello, world!")
+        def my_fragment(ui: RouteLitBuilder):
+            ui.text("Hello, world!")
+
+        @rl.fragment()
+        def my_fragment2():
+            ui = rl.ui
+            ui.text("Hello, world!")
         ```
         """
 
@@ -307,11 +384,11 @@ class RouteLit:
             fragment_key = key or view_fn.__name__
 
             @functools.wraps(view_fn)
-            def wrapper(rl: RouteLitBuilder, *args: Any, **kwargs: Any) -> Any:
-                args, kwargs = self._preprocess_fragment_params(rl, fragment_key, args, kwargs)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                rl, is_builder_1st_arg, args, kwargs = self._preprocess_fragment_params(fragment_key, args, kwargs)
 
                 with rl._fragment(fragment_key):
-                    res = view_fn(rl, *args, **kwargs)
+                    res = view_fn(rl, *args, **kwargs) if is_builder_1st_arg else view_fn(*args, **kwargs)
                     return res
 
             self._register_fragment(fragment_key, wrapper)
@@ -335,8 +412,22 @@ class RouteLit:
         rl = RouteLit()
 
         @rl.dialog()
-        def my_dialog(rl: RouteLitBuilder):
-            rl.text("Hello, world!")
+        def my_dialog(ui: RouteLitBuilder):
+            ui.text("Hello, world!")
+
+        def my_main_view(ui: RouteLitBuilder):
+            if ui.button("Open dialog"):
+                my_dialog(ui)
+
+        @rl.dialog()
+        def my_dialog2():
+            ui = rl.ui
+            ui.text("Hello, world!")
+
+        def my_main_view2():
+            ui = rl.ui
+            if ui.button("Open dialog"):
+                my_dialog2()
         ```
         """
 
@@ -345,11 +436,11 @@ class RouteLit:
             dialog_key = f"{fragment_key}-dialog"
 
             @functools.wraps(view_fn)
-            def wrapper(rl: RouteLitBuilder, *args: Any, **kwargs: Any) -> Any:
-                args, kwargs = self._preprocess_fragment_params(rl, fragment_key, args, kwargs)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                rl, is_builder_1st_arg, args, kwargs = self._preprocess_fragment_params(fragment_key, args, kwargs)
 
                 with rl._fragment(fragment_key), rl._dialog(dialog_key):
-                    res = view_fn(rl, *args, **kwargs)
+                    res = view_fn(rl, *args, **kwargs) if is_builder_1st_arg else view_fn(*args, **kwargs)
                     return res
 
             self._register_fragment(fragment_key, wrapper)
