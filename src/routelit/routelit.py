@@ -227,7 +227,7 @@ class RouteLit(Generic[BuilderType]):
             session_state = self.session_storage.get(session_keys.state_key, {})
             events = session_state.get(f"__events4later_{form_id}", {})
             events[event["componentId"]] = event
-            self.session_storage[session_keys.state_key] = session_state | {f"__events4later_{form_id}": events}
+            self.session_storage[session_keys.state_key] = {**session_state, f"__events4later_{form_id}": events}
             return True
         return False
 
@@ -345,7 +345,7 @@ class RouteLit(Generic[BuilderType]):
                 }
             }
             all_fragment_params = self.session_storage.get(session_keys.fragment_params_key, {})
-            self.session_storage[session_keys.fragment_params_key] = all_fragment_params | fragment_params_by_key
+            self.session_storage[session_keys.fragment_params_key] = {**all_fragment_params, **fragment_params_by_key}
         else:
             fragment_params = self.session_storage.get(session_keys.fragment_params_key, {}).get(fragment_key, {})
             args = fragment_params.get("args", [])

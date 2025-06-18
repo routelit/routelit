@@ -1,6 +1,6 @@
 import hashlib
 from collections.abc import MutableMapping
-from typing import Any, Callable, ClassVar, Dict, List, Literal, Optional, Tuple
+from typing import Any, Callable, ClassVar, Dict, List, Literal, Optional, Tuple, Union
 
 from routelit.domain import (
     AssetTarget,
@@ -546,7 +546,7 @@ class RouteLitBuilder:
 
     def columns(
         self,
-        spec: int | List[int],
+        spec: Union[int, List[int]],
         *,
         key: Optional[str] = None,
         vertical_alignment: VerticalAlignment = "top",
@@ -680,9 +680,9 @@ class RouteLitBuilder:
         self,
         element_type: str,
         label: str,
-        value: Any | None = None,
-        key: str | None = None,
-        on_change: Callable[[Any], None] | None = None,
+        value: Optional[Any] = None,
+        key: Optional[str] = None,
+        on_change: Optional[Callable[[Any], None]] = None,
         event_name: str = "change",
         value_attribute: str = "value",
         **kwargs: Any,
@@ -710,10 +710,10 @@ class RouteLitBuilder:
         self,
         element_type: Literal["radio", "select"],
         label: str,
-        options: List[Dict[str, Any] | str],
-        value: Any | None = None,
-        key: str | None = None,
-        on_change: Callable[[Any], None] | None = None,
+        options: List[Union[Dict[str, Any], str]],
+        value: Optional[Any] = None,
+        key: Optional[str] = None,
+        on_change: Optional[Callable[[Any], None]] = None,
         **kwargs: Any,
     ) -> Any:
         component_id = key or self._new_widget_id(element_type, label)
@@ -801,7 +801,7 @@ class RouteLitBuilder:
     def radio(
         self,
         label: str,
-        options: List[Dict[str, Any] | str],
+        options: List[Union[Dict[str, Any], str]],
         *,
         value: Optional[Any] = None,
         key: Optional[str] = None,
@@ -846,7 +846,7 @@ class RouteLitBuilder:
     def select(
         self,
         label: str,
-        options: List[Dict[str, Any] | str],
+        options: List[Union[Dict[str, Any], str]],
         *,
         value: Optional[Any] = None,
         key: Optional[str] = None,
@@ -930,7 +930,7 @@ class RouteLitBuilder:
     def checkbox_group(
         self,
         label: str,
-        options: List[Dict[str, Any] | str],
+        options: List[Union[Dict[str, Any], str]],
         *,
         value: Optional[List[Any]] = None,
         key: Optional[str] = None,
