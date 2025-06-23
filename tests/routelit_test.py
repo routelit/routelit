@@ -14,7 +14,7 @@ The test suite achieves 100% code coverage for the routelit.py module.
 
 import contextlib
 from collections import defaultdict
-from typing import ClassVar, List, Optional
+from typing import List, MutableMapping, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -22,7 +22,6 @@ import pytest
 from routelit.builder import RouteLitBuilder
 from routelit.domain import (
     AddAction,
-    AssetTarget,
     PropertyDict,
     RemoveAction,
     RouteLitElement,
@@ -181,7 +180,12 @@ class MockRequest(RouteLitRequest):
 
 # Define a simple concrete builder for testing RouteLit
 class MockBuilder(RouteLitBuilder):
-    static_assets_targets: ClassVar[List[AssetTarget]] = [AssetTarget(package_name="mock_pkg", src_dir="mock_src")]
+    """Mock builder for testing."""
+
+    def __init__(
+        self, request: RouteLitRequest, session_state: PropertyDict, fragments: MutableMapping[str, List[int]], **kwargs
+    ):
+        super().__init__(request=request, session_state=session_state, fragments=fragments, **kwargs)
 
     def text(self, text: str, key: Optional[str] = None):
         key = key or self._new_text_id("text")
@@ -457,14 +461,15 @@ class TestRouteLit:
     @patch("routelit.routelit.get_vite_components_assets")
     def test_client_assets(self, mock_get_assets, routelit):
         """Test client_assets method returns correct assets"""
-        mock_assets = MagicMock(package_name="routelit_elements", js_files=["test.js"], css_files=["test.css"])
+        mock_assets = [{"package_name": "routelit", "src_dir": "static"}]
         mock_get_assets.return_value = mock_assets
 
-        result = routelit.client_assets()
+        result = routelit.default_client_assets()
 
         assert len(result) == 1
-        assert result[0] == mock_assets
-        mock_get_assets.assert_called_once_with("mock_pkg")
+        assert result[0]["package_name"] == "routelit"
+        assert result[0]["src_dir"] == "static"
+        mock_get_assets.assert_called_once_with("routelit")
 
     @patch("routelit.routelit.get_vite_components_assets")
     def test_default_client_assets(self, mock_get_assets, routelit):

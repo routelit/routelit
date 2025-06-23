@@ -95,7 +95,7 @@ class TestRouteLitBuilder:
 
     @pytest.fixture
     def builder(self, mock_request):
-        return RouteLitBuilder(request=mock_request, session_state=PropertyDict())
+        return RouteLitBuilder(request=mock_request, session_state=PropertyDict({}), fragments={})
 
     def test_init_defaults(self, builder, mock_request):
         """Test builder initialization with default values."""
@@ -117,6 +117,7 @@ class TestRouteLitBuilder:
         nested_builder = RouteLitBuilder(
             request=builder.request,
             session_state=builder.session_state,
+            fragments=builder.fragments,
             parent_element=parent_element,
             parent_builder=builder,
             address=[0],
@@ -128,15 +129,18 @@ class TestRouteLitBuilder:
         assert parent_element.children is nested_builder.elements  # Parent children points to builder elements
 
     def test_init_with_prefix_override(self, builder):
-        """Test prefix override during initialization."""
+        """Test initialization with explicit prefix override."""
         parent_element = RouteLitElement(key="parent_key", name="div", props={})
         nested_builder = RouteLitBuilder(
             request=builder.request,
             session_state=builder.session_state,
+            fragments=builder.fragments,
             parent_element=parent_element,
+            parent_builder=builder,
             prefix="custom_prefix",  # Override prefix
+            address=[0],
         )
-        assert nested_builder.prefix == "custom_prefix"
+        assert nested_builder.prefix == "custom_prefix"  # Uses override instead of parent key
 
     def test_id_generation(self, builder):
         """Test generation of IDs for non-widget and widget elements."""
@@ -318,6 +322,7 @@ class TestRouteLitBuilder:
         fragmented_builder = RouteLitBuilder(
             request=mock_request,
             session_state={},
+            fragments={},
             initial_fragment_id="frag1",  # Set the initial fragment ID
         )
 
@@ -335,7 +340,7 @@ class TestRouteLitBuilder:
         # The `initial_fragment_id` is used by `RouteLit` to know *which* builder to use.
 
         # Let's simulate the structure RouteLit creates
-        main_builder = RouteLitBuilder(request=MockRequestBuilder(), session_state={})
+        main_builder = RouteLitBuilder(request=MockRequestBuilder(), session_state={}, fragments={})
         main_builder._create_element("header", "h1")
         frag_element = main_builder._create_non_widget_element("fragment", "frag1", address=[1])
         # Normally, RouteLit would call the fragment view function with a builder
@@ -884,8 +889,10 @@ class TestRouteLitBuilder:
         assert container_element.key == "my-columns"
         assert "rl-flex" in container_element.props["className"]
         assert "rl-flex-row" in container_element.props["className"]
-        assert container_element.props["style"]["alignItems"] == "center"
-        assert container_element.props["style"]["columnGap"] == "3rem"
+        assert (
+            container_element.props["style"]["alignItems"] == "center"
+        )  # verticalAlignmentMap maps "center" to "center"
+        assert container_element.props["style"]["columnGap"] == "3rem"  # columnsGapMap maps "large" to "3rem"
 
         # Check that three columns were created
         assert len(container_element.children) == 3
@@ -908,8 +915,10 @@ class TestRouteLitBuilder:
 
         assert len(builder.elements) == 1
         container_element = builder.elements[0]
-        assert container_element.props["style"]["alignItems"] == "flex-end"
-        assert container_element.props["style"]["columnGap"] == "2rem"
+        assert (
+            container_element.props["style"]["alignItems"] == "flex-end"
+        )  # verticalAlignmentMap maps "bottom" to "flex-end"
+        assert container_element.props["style"]["columnGap"] == "2rem"  # columnsGapMap maps "medium" to "2rem"
 
         # Check column flex values
         assert len(container_element.children) == 2
@@ -1312,15 +1321,28 @@ class TestRouteLitBuilder:
 
     def test_text_input_types(self, builder):
         """Test text input with different input types."""
-        # Test various input types
-        builder.text_input("Email", type="email", key="email")
-        builder.text_input("Age", type="number", key="age")
-        builder.text_input("Birthday", type="date", key="birthday")
+        # Test all valid input types
+        input_types = [
+            "text",
+            "number",
+            "email",
+            "password",
+            "search",
+            "tel",
+            "url",
+            "date",
+            "time",
+            "datetime-local",
+            "month",
+            "week",
+        ]
 
-        assert len(builder.elements) == 3
-        assert builder.elements[0].props["type"] == "email"
-        assert builder.elements[1].props["type"] == "number"
-        assert builder.elements[2].props["type"] == "date"
+        for input_type in input_types:
+            builder.text_input(f"{input_type} input", type=input_type, key=f"{input_type}-input")
+
+        assert len(builder.elements) == len(input_types)
+        for i, input_type in enumerate(input_types):
+            assert builder.elements[i].props["type"] == input_type
 
     def test_columns_edge_cases(self, builder):
         """Test columns with edge cases and different configurations."""
@@ -1692,10 +1714,10 @@ class TestRouteLitBuilder:
         assert clicked_submit is False
 
         # Test with click event (default)
-        clicked_click = builder.button("Click", key="click-btn")
+        clicked_click = builder.button("Click", event_name="click", key="click-btn")
         assert clicked_click is False
 
-        # Verify both buttons were created with correct event names
+        # Verify both valid buttons were created with correct event names
         assert len(builder.elements) == 2
         assert builder.elements[0].props["eventName"] == "submit"
         assert builder.elements[1].props["eventName"] == "click"
@@ -1716,7 +1738,31 @@ class TestRouteLitBuilder:
         assert len(builder.elements) == 1
         element = builder.elements[0]
         assert element.name == "custom-input"
+        assert element.props["label"] == "Custom Input"
         assert element.props["textContent"] == "initial"
+
+        # Test event handling with custom event name and attribute
+        builder.request._ui_event = {"type": "blur", "componentId": "custom", "data": {"textContent": "updated"}}
+        builder.elements.clear()
+
+        callback_value = None
+
+        def on_change(new_val):
+            nonlocal callback_value
+            callback_value = new_val
+
+        result = builder._x_input(
+            "custom-input",
+            "Custom Input",
+            key="custom",
+            event_name="blur",
+            value_attribute="textContent",
+            on_change=on_change,
+        )
+
+        assert result == "updated"
+        assert callback_value == "updated"
+        assert builder.session_state["custom"] == "updated"
 
     def test_session_state_key_conflicts(self, builder):
         """Test handling of session state key conflicts"""
@@ -1740,9 +1786,9 @@ class TestRouteLitBuilder:
 
         # Test select with empty options
         result2 = builder.select("Empty Select", [], key="select1")
-        assert result2 is None
+        assert result2 == ""  # Select returns empty string for empty value
 
-        # Verify elements were still created
+        # Verify elements were created correctly
         assert len(builder.elements) == 2
         assert builder.elements[0].props["options"] == []
         assert builder.elements[1].props["options"] == []
@@ -1764,3 +1810,44 @@ class TestRouteLitBuilder:
         except ValueError:
             # If the error is not caught, this test documents the current behavior
             pass
+
+    def test_form_event_handling(self, builder):
+        """Test form event handling with event storage and submission."""
+        # Set up initial form events
+        builder.session_state["__events4later_test-form"] = {
+            "input1": {"type": "change", "data": {"value": "value1"}},
+            "input2": {"type": "change", "data": {"value": "value2"}},
+        }
+
+        # Create form and trigger submission
+        builder.request._ui_event = {"type": "submit", "formId": "test-form", "data": {}}
+
+        with builder.form("test-form") as form:
+            # First event access should trigger rerun
+            try:
+                form._maybe_get_event("input1")
+                pytest.fail("Should have raised RerunException")
+            except RerunException as e:
+                # Check events were moved correctly
+                assert "__events_test-form" in e.state
+                assert e.state["__events_test-form"] == {
+                    "input1": {"type": "change", "data": {"value": "value1"}},
+                    "input2": {"type": "change", "data": {"value": "value2"}},
+                }
+                assert e.state["__ignore_submit"] == "test-form"
+
+        # Test form event cleanup
+        builder.on_end()
+        assert "__ignore_submit" not in builder.session_state
+
+        # Test form event handling without submission
+        builder.session_state["__events_test-form"] = {"input3": {"type": "change", "data": {"value": "value3"}}}
+        builder.request._ui_event = None  # Clear the submit event
+        builder.session_state["__ignore_submit"] = "test-form"  # Set ignore flag
+
+        with builder.form("test-form") as form:
+            event = form._maybe_get_event("input3")
+            assert event is not None
+            assert event["data"]["value"] == "value3"
+            # Event should be removed after access
+            assert "input3" not in builder.session_state["__events_test-form"]

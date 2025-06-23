@@ -59,8 +59,8 @@ class RouteLitBuilder:
         self,
         request: RouteLitRequest,
         session_state: PropertyDict,
+        fragments: MutableMapping[str, List[int]],
         initial_fragment_id: Optional[str] = None,
-        fragments: Optional[MutableMapping[str, List[int]]] = None,
         prefix: Optional[str] = None,
         parent_element: Optional[RouteLitElement] = None,
         parent_builder: Optional["RouteLitBuilder"] = None,
@@ -69,7 +69,7 @@ class RouteLitBuilder:
     ):
         self.request = request
         self.initial_fragment_id = initial_fragment_id
-        self.fragments = fragments or {}
+        self.fragments = fragments
         self.address = address
         self.head = Head()
         # Set prefix based on parent element if not explicitly provided
@@ -235,9 +235,10 @@ class RouteLitBuilder:
         name: str,
         key: str,
         props: Optional[Dict[str, Any]] = None,
+        children: Optional[List[RouteLitElement]] = None,
         address: Optional[List[int]] = None,
     ) -> RouteLitElement:
-        element = RouteLitElement(key=key, name=name, props=props or {}, address=address)
+        element = RouteLitElement(key=key, name=name, props=props or {}, address=address, children=children)
         self._add_non_widget(element)
         return element
 
@@ -848,7 +849,7 @@ class RouteLitBuilder:
         label: str,
         options: List[Union[Dict[str, Any], str]],
         *,
-        value: Optional[Any] = None,
+        value: Any = "",
         key: Optional[str] = None,
         on_change: Optional[Callable[[Any], None]] = None,
         **kwargs: Any,
@@ -862,7 +863,7 @@ class RouteLitBuilder:
                 - label: The label of the option.
                 - value: The value of the option.
                 - disabled: Whether the option is disabled.
-            value (str | int | None): The value of the select dropdown.
+            value (str | int): The value of the select dropdown.
             key (str | None): The key of the select dropdown.
             on_change (Callable[[str | int | None], None] | None): The function to call when the value changes. The function will be called with the new value.
             kwargs (Dict[str, Any]): The keyword arguments to pass to the select dropdown.
@@ -1064,4 +1065,15 @@ class RouteLitBuilder:
 
     @classmethod
     def get_client_resource_paths(cls) -> List[AssetTarget]:
-        return cls.static_assets_targets
+        static_assets_targets = []
+        for c in cls.__mro__:
+            if hasattr(c, "static_assets_targets") and isinstance(c.static_assets_targets, list):
+                static_assets_targets.extend(c.static_assets_targets)
+        # Remove duplicates while preserving order (works with unhashable types like dictionaries)
+        seen = []
+        result = []
+        for item in static_assets_targets:
+            if item not in seen:
+                seen.append(item)
+                result.append(item)
+        return result
