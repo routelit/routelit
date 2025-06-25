@@ -37,6 +37,7 @@ class MockRouteLitRequest(RouteLitRequest):
         self,
         method: str = "GET",
         headers: Optional[Dict[str, str]] = None,
+        path_params: Optional[Dict[str, str]] = None,
         referrer: Optional[str] = None,
         is_json_request: bool = False,
         json_data: Optional[Dict] = None,
@@ -48,6 +49,7 @@ class MockRouteLitRequest(RouteLitRequest):
     ):
         self._method = method
         self._headers = headers or {}
+        self._path_params = path_params or {}
         self._referrer = referrer
         self._is_json_request = is_json_request
         self._json_data = json_data
@@ -60,6 +62,9 @@ class MockRouteLitRequest(RouteLitRequest):
 
     def get_headers(self) -> Dict[str, str]:
         return self._headers
+
+    def get_path_params(self) -> Optional[Dict[str, str]]:
+        return self._path_params
 
     def get_referrer(self) -> Optional[str]:
         return self._referrer
