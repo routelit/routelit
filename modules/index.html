@@ -386,6 +386,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#routelit.RouteLit.handle_get_request" class="md-nav__link">
+    <span class="md-ellipsis">
+      handle_get_request
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#routelit.RouteLit.response" class="md-nav__link">
     <span class="md-ellipsis">
       response
@@ -906,6 +915,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#routelit.RouteLit.handle_get_request" class="md-nav__link">
+    <span class="md-ellipsis">
+      handle_get_request
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#routelit.RouteLit.response" class="md-nav__link">
     <span class="md-ellipsis">
       response
@@ -1388,8 +1406,7 @@
 
               <details class="quote">
                 <summary>Source code in <code>src/routelit/routelit.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 40</span>
-<span class="normal"> 41</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 41</span>
 <span class="normal"> 42</span>
 <span class="normal"> 43</span>
 <span class="normal"> 44</span>
@@ -1797,7 +1814,16 @@
 <span class="normal">446</span>
 <span class="normal">447</span>
 <span class="normal">448</span>
-<span class="normal">449</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">RouteLit</span><span class="p">(</span><span class="n">Generic</span><span class="p">[</span><span class="n">BuilderType</span><span class="p">]):</span>
+<span class="normal">449</span>
+<span class="normal">450</span>
+<span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">RouteLit</span><span class="p">(</span><span class="n">Generic</span><span class="p">[</span><span class="n">BuilderType</span><span class="p">]):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    RouteLit is a class that provides a framework for handling HTTP requests and generating responses in a web application. It manages the routing and view functions that define how the application responds to different requests.</span>
 
@@ -1895,7 +1921,7 @@
 <span class="sd">        ```</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;GET&quot;</span><span class="p">:</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_get_request</span><span class="p">(</span><span class="n">view_fn</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">should_inject_builder</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_get_request</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
         <span class="k">elif</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;POST&quot;</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_post_request</span><span class="p">(</span><span class="n">view_fn</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">should_inject_builder</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
@@ -1904,15 +1930,27 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">handle_get_request</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
-        <span class="n">view_fn</span><span class="p">:</span> <span class="n">ViewFn</span><span class="p">,</span>
         <span class="n">request</span><span class="p">:</span> <span class="n">RouteLitRequest</span><span class="p">,</span>
-        <span class="n">should_inject_builder</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
         <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RouteLitResponse</span><span class="p">:</span>
-        <span class="n">should_inject_builder</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="n">should_inject_builder</span> <span class="k">if</span> <span class="n">should_inject_builder</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">should_inject_builder</span>
-        <span class="p">)</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot; &quot;</span>
+<span class="sd">        Handle a GET request.</span>
+<span class="sd">        If the session state is present, it will be cleared.</span>
+<span class="sd">        The head title and description can be passed as kwargs.</span>
+<span class="sd">        Example:</span>
+<span class="sd">        ```python</span>
+<span class="sd">        return routelit_adapter.response(build_signup_view, head_title=&quot;Signup&quot;, head_description=&quot;Signup page&quot;)</span>
+<span class="sd">        ```</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            request (RouteLitRequest): The request object.</span>
+<span class="sd">            **kwargs (Dict[str, Any]): Additional keyword arguments.</span>
+<span class="sd">                head_title (Optional[str]): The title of the head.</span>
+<span class="sd">                head_description (Optional[str]): The description of the head.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            RouteLitResponse: The response object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">session_keys</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_session_keys</span><span class="p">()</span>
         <span class="n">ui_key</span><span class="p">,</span> <span class="n">state_key</span><span class="p">,</span> <span class="n">fragment_addresses_key</span><span class="p">,</span> <span class="n">fragment_params_key</span> <span class="o">=</span> <span class="n">session_keys</span>
         <span class="k">if</span> <span class="n">state_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="p">:</span>
@@ -1920,22 +1958,12 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">state_key</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">fragment_addresses_key</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">fragment_params_key</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-        <span class="n">builder</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">BuilderClass</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">session_state</span><span class="o">=</span><span class="n">PropertyDict</span><span class="p">({}),</span> <span class="n">fragments</span><span class="o">=</span><span class="p">{})</span>
-        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_set_builder_context</span><span class="p">(</span><span class="n">builder</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">should_inject_builder</span><span class="p">:</span>
-                <span class="n">view_fn</span><span class="p">(</span><span class="n">builder</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">view_fn</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-        <span class="n">elements</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">get_elements</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="p">[</span><span class="n">ui_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">elements</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="p">[</span><span class="n">state_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">session_state</span><span class="o">.</span><span class="n">get_data</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="p">[</span><span class="n">fragment_addresses_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">get_fragments</span><span class="p">()</span>
-        <span class="c1"># Initialize fragment_params_key to empty dict if not present</span>
-        <span class="k">if</span> <span class="n">fragment_params_key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="p">[</span><span class="n">fragment_params_key</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
         <span class="k">return</span> <span class="n">RouteLitResponse</span><span class="p">(</span>
-            <span class="n">elements</span><span class="o">=</span><span class="n">elements</span><span class="p">,</span>
-            <span class="n">head</span><span class="o">=</span><span class="n">builder</span><span class="o">.</span><span class="n">get_head</span><span class="p">(),</span>
+            <span class="n">elements</span><span class="o">=</span><span class="p">[],</span>
+            <span class="n">head</span><span class="o">=</span><span class="n">Head</span><span class="p">(</span>
+                <span class="n">title</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;head_title&quot;</span><span class="p">),</span>
+                <span class="n">description</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;head_description&quot;</span><span class="p">),</span>
+            <span class="p">),</span>
         <span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_get_prev_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">RouteLitRequest</span><span class="p">,</span> <span class="n">session_keys</span><span class="p">:</span> <span class="n">SessionKeys</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="n">SessionKeys</span><span class="p">]:</span>
@@ -1987,7 +2015,10 @@
             <span class="n">session_state</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">session_keys</span><span class="o">.</span><span class="n">state_key</span><span class="p">,</span> <span class="p">{})</span>
             <span class="n">events</span> <span class="o">=</span> <span class="n">session_state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;__events4later_</span><span class="si">{</span><span class="n">form_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="p">{})</span>
             <span class="n">events</span><span class="p">[</span><span class="n">event</span><span class="p">[</span><span class="s2">&quot;componentId&quot;</span><span class="p">]]</span> <span class="o">=</span> <span class="n">event</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="p">[</span><span class="n">session_keys</span><span class="o">.</span><span class="n">state_key</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">session_state</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;__events4later_</span><span class="si">{</span><span class="n">form_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">events</span><span class="p">}</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="p">[</span><span class="n">session_keys</span><span class="o">.</span><span class="n">state_key</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="o">**</span><span class="n">session_state</span><span class="p">,</span>
+                <span class="sa">f</span><span class="s2">&quot;__events4later_</span><span class="si">{</span><span class="n">form_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">events</span><span class="p">,</span>
+            <span class="p">}</span>
             <span class="k">return</span> <span class="kc">True</span>
         <span class="k">return</span> <span class="kc">False</span>
 
@@ -2015,6 +2046,8 @@
             <span class="n">prev_elements</span><span class="p">,</span> <span class="n">maybe_prev_fragment_elements</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_prev_elements_at_fragment</span><span class="p">(</span>
                 <span class="n">prev_session_keys</span><span class="p">,</span> <span class="n">fragment_id</span>
             <span class="p">)</span>
+            <span class="k">if</span> <span class="n">is_navigation_event</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_clear_session_state</span><span class="p">(</span><span class="n">prev_session_keys</span><span class="p">)</span>
             <span class="n">prev_session_state</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">prev_session_keys</span><span class="o">.</span><span class="n">state_key</span><span class="p">,</span> <span class="p">{})</span>
             <span class="n">prev_fragments</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">prev_session_keys</span><span class="o">.</span><span class="n">fragment_addresses_key</span><span class="p">,</span> <span class="p">{})</span>
             <span class="n">builder</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">BuilderClass</span><span class="p">(</span>
@@ -2039,8 +2072,6 @@
                 <span class="n">fragments</span><span class="o">=</span><span class="n">builder</span><span class="o">.</span><span class="n">get_fragments</span><span class="p">(),</span>
                 <span class="n">fragment_id</span><span class="o">=</span><span class="n">fragment_id</span><span class="p">,</span>
             <span class="p">)</span>
-            <span class="k">if</span> <span class="n">is_navigation_event</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_clear_session_state</span><span class="p">(</span><span class="n">prev_session_keys</span><span class="p">)</span>
             <span class="n">actions</span> <span class="o">=</span> <span class="n">compare_elements</span><span class="p">(</span><span class="n">maybe_prev_fragment_elements</span> <span class="ow">or</span> <span class="n">prev_elements</span><span class="p">,</span> <span class="n">elements</span><span class="p">)</span>
             <span class="n">target</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;app&quot;</span><span class="p">,</span> <span class="s2">&quot;fragment&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;app&quot;</span> <span class="k">if</span> <span class="n">fragment_id</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;fragment&quot;</span>
             <span class="n">action_response</span> <span class="o">=</span> <span class="n">ActionsResponse</span><span class="p">(</span><span class="n">actions</span><span class="o">=</span><span class="n">actions</span><span class="p">,</span> <span class="n">target</span><span class="o">=</span><span class="n">target</span><span class="p">)</span>
@@ -2105,7 +2136,10 @@
                 <span class="p">}</span>
             <span class="p">}</span>
             <span class="n">all_fragment_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">session_keys</span><span class="o">.</span><span class="n">fragment_params_key</span><span class="p">,</span> <span class="p">{})</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="p">[</span><span class="n">session_keys</span><span class="o">.</span><span class="n">fragment_params_key</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">all_fragment_params</span><span class="p">,</span> <span class="o">**</span><span class="n">fragment_params_by_key</span><span class="p">}</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="p">[</span><span class="n">session_keys</span><span class="o">.</span><span class="n">fragment_params_key</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="o">**</span><span class="n">all_fragment_params</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">fragment_params_by_key</span><span class="p">,</span>
+            <span class="p">}</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">fragment_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">session_keys</span><span class="o">.</span><span class="n">fragment_params_key</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">fragment_key</span><span class="p">,</span> <span class="p">{})</span>
             <span class="n">args</span> <span class="o">=</span> <span class="n">fragment_params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;args&quot;</span><span class="p">,</span> <span class="p">[])</span>
@@ -2272,18 +2306,18 @@ This should be called by the web framework to render the assets.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/routelit/routelit.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">312</span>
-<span class="normal">313</span>
-<span class="normal">314</span>
-<span class="normal">315</span>
-<span class="normal">316</span>
-<span class="normal">317</span>
-<span class="normal">318</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">318</span>
 <span class="normal">319</span>
 <span class="normal">320</span>
 <span class="normal">321</span>
 <span class="normal">322</span>
-<span class="normal">323</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">client_assets</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">ViteComponentsAssets</span><span class="p">]:</span>
+<span class="normal">323</span>
+<span class="normal">324</span>
+<span class="normal">325</span>
+<span class="normal">326</span>
+<span class="normal">327</span>
+<span class="normal">328</span>
+<span class="normal">329</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">client_assets</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">ViteComponentsAssets</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Render the vite assets for BuilderClass components.</span>
 <span class="sd">    This function will return a list of ViteComponentsAssets.</span>
@@ -2394,16 +2428,7 @@ def my_main_view2():
 
             <details class="quote">
               <summary>Source code in <code>src/routelit/routelit.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">399</span>
-<span class="normal">400</span>
-<span class="normal">401</span>
-<span class="normal">402</span>
-<span class="normal">403</span>
-<span class="normal">404</span>
-<span class="normal">405</span>
-<span class="normal">406</span>
-<span class="normal">407</span>
-<span class="normal">408</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">408</span>
 <span class="normal">409</span>
 <span class="normal">410</span>
 <span class="normal">411</span>
@@ -2444,7 +2469,16 @@ def my_main_view2():
 <span class="normal">446</span>
 <span class="normal">447</span>
 <span class="normal">448</span>
-<span class="normal">449</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">dialog</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">ViewFn</span><span class="p">],</span> <span class="n">ViewFn</span><span class="p">]:</span>
+<span class="normal">449</span>
+<span class="normal">450</span>
+<span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">dialog</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">ViewFn</span><span class="p">],</span> <span class="n">ViewFn</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Decorator to register a dialog.</span>
 
 <span class="sd">    Args:</span>
@@ -2585,16 +2619,7 @@ def my_fragment2():
 
             <details class="quote">
               <summary>Source code in <code>src/routelit/routelit.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">356</span>
-<span class="normal">357</span>
-<span class="normal">358</span>
-<span class="normal">359</span>
-<span class="normal">360</span>
-<span class="normal">361</span>
-<span class="normal">362</span>
-<span class="normal">363</span>
-<span class="normal">364</span>
-<span class="normal">365</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">365</span>
 <span class="normal">366</span>
 <span class="normal">367</span>
 <span class="normal">368</span>
@@ -2626,7 +2651,16 @@ def my_fragment2():
 <span class="normal">394</span>
 <span class="normal">395</span>
 <span class="normal">396</span>
-<span class="normal">397</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">fragment</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">ViewFn</span><span class="p">],</span> <span class="n">ViewFn</span><span class="p">]:</span>
+<span class="normal">397</span>
+<span class="normal">398</span>
+<span class="normal">399</span>
+<span class="normal">400</span>
+<span class="normal">401</span>
+<span class="normal">402</span>
+<span class="normal">403</span>
+<span class="normal">404</span>
+<span class="normal">405</span>
+<span class="normal">406</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">fragment</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">ViewFn</span><span class="p">],</span> <span class="n">ViewFn</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Decorator to register a fragment.</span>
 
@@ -2668,6 +2702,179 @@ def my_fragment2():
         <span class="k">return</span> <span class="n">wrapper</span>
 
     <span class="k">return</span> <span class="n">decorator_fragment</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="routelit.RouteLit.handle_get_request" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">handle_get_request</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+
+<a href="#routelit.RouteLit.handle_get_request" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>"
+Handle a GET request.
+If the session state is present, it will be cleared.
+The head title and description can be passed as kwargs.
+Example:</p>
+<pre><code class="language-python">return routelit_adapter.response(build_signup_view, head_title=&quot;Signup&quot;, head_description=&quot;Signup page&quot;)
+</code></pre>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>request</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="RouteLitRequest (routelit.domain.RouteLitRequest)" href="#routelit.domain.RouteLitRequest">RouteLitRequest</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The request object.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>**kwargs</code>
+            </td>
+            <td>
+                  <code><span title="typing.Dict">Dict</span>[<span title="str">str</span>, <span title="typing.Any">Any</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Additional keyword arguments.
+head_title (Optional[str]): The title of the head.
+head_description (Optional[str]): The description of the head.</p>
+              </div>
+            </td>
+            <td>
+                  <code>{}</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>RouteLitResponse</code></td>            <td>
+                  <code><span title="routelit.domain.RouteLitResponse">RouteLitResponse</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The response object.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="quote">
+              <summary>Source code in <code>src/routelit/routelit.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">handle_get_request</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span>
+    <span class="n">request</span><span class="p">:</span> <span class="n">RouteLitRequest</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RouteLitResponse</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot; &quot;</span>
+<span class="sd">    Handle a GET request.</span>
+<span class="sd">    If the session state is present, it will be cleared.</span>
+<span class="sd">    The head title and description can be passed as kwargs.</span>
+<span class="sd">    Example:</span>
+<span class="sd">    ```python</span>
+<span class="sd">    return routelit_adapter.response(build_signup_view, head_title=&quot;Signup&quot;, head_description=&quot;Signup page&quot;)</span>
+<span class="sd">    ```</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        request (RouteLitRequest): The request object.</span>
+<span class="sd">        **kwargs (Dict[str, Any]): Additional keyword arguments.</span>
+<span class="sd">            head_title (Optional[str]): The title of the head.</span>
+<span class="sd">            head_description (Optional[str]): The description of the head.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        RouteLitResponse: The response object.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">session_keys</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_session_keys</span><span class="p">()</span>
+    <span class="n">ui_key</span><span class="p">,</span> <span class="n">state_key</span><span class="p">,</span> <span class="n">fragment_addresses_key</span><span class="p">,</span> <span class="n">fragment_params_key</span> <span class="o">=</span> <span class="n">session_keys</span>
+    <span class="k">if</span> <span class="n">state_key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">ui_key</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">state_key</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">fragment_addresses_key</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">session_storage</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">fragment_params_key</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">RouteLitResponse</span><span class="p">(</span>
+        <span class="n">elements</span><span class="o">=</span><span class="p">[],</span>
+        <span class="n">head</span><span class="o">=</span><span class="n">Head</span><span class="p">(</span>
+            <span class="n">title</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;head_title&quot;</span><span class="p">),</span>
+            <span class="n">description</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;head_description&quot;</span><span class="p">),</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2797,8 +3004,7 @@ response = rl.response(my_view, request, name=&quot;John&quot;)
 
             <details class="quote">
               <summary>Source code in <code>src/routelit/routelit.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 96</span>
-<span class="normal"> 97</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 97</span>
 <span class="normal"> 98</span>
 <span class="normal"> 99</span>
 <span class="normal">100</span>
@@ -2844,7 +3050,8 @@ response = rl.response(my_view, request, name=&quot;John&quot;)
 <span class="normal">140</span>
 <span class="normal">141</span>
 <span class="normal">142</span>
-<span class="normal">143</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">response</span><span class="p">(</span>
+<span class="normal">143</span>
+<span class="normal">144</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">response</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">view_fn</span><span class="p">:</span> <span class="n">ViewFn</span><span class="p">,</span>
     <span class="n">request</span><span class="p">:</span> <span class="n">RouteLitRequest</span><span class="p">,</span>
@@ -2886,7 +3093,7 @@ response = rl.response(my_view, request, name=&quot;John&quot;)
 <span class="sd">    ```</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;GET&quot;</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_get_request</span><span class="p">(</span><span class="n">view_fn</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">should_inject_builder</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_get_request</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
     <span class="k">elif</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;POST&quot;</span><span class="p">:</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_post_request</span><span class="p">(</span><span class="n">view_fn</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">should_inject_builder</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
@@ -8957,13 +9164,13 @@ ui.text(f&quot;Text is {text}&quot;)
 
               <details class="quote">
                 <summary>Source code in <code>src/routelit/domain.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">73</span>
-<span class="normal">74</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">74</span>
 <span class="normal">75</span>
 <span class="normal">76</span>
 <span class="normal">77</span>
 <span class="normal">78</span>
-<span class="normal">79</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
+<span class="normal">79</span>
+<span class="normal">80</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">Action</span><span class="p">:</span>
     <span class="n">address</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -9044,14 +9251,14 @@ from the root to the target element.</p>
 
               <details class="quote">
                 <summary>Source code in <code>src/routelit/domain.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">114</span>
-<span class="normal">115</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">115</span>
 <span class="normal">116</span>
 <span class="normal">117</span>
 <span class="normal">118</span>
 <span class="normal">119</span>
 <span class="normal">120</span>
-<span class="normal">121</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
+<span class="normal">121</span>
+<span class="normal">122</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">ActionsResponse</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The actions to be executed by the RouteLit app.</span>
@@ -9117,15 +9324,15 @@ from the root to the target element.</p>
 
               <details class="quote">
                 <summary>Source code in <code>src/routelit/domain.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">82</span>
-<span class="normal">83</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">83</span>
 <span class="normal">84</span>
 <span class="normal">85</span>
 <span class="normal">86</span>
 <span class="normal">87</span>
 <span class="normal">88</span>
 <span class="normal">89</span>
-<span class="normal">90</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
+<span class="normal">90</span>
+<span class="normal">91</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">AddAction</span><span class="p">(</span><span class="n">Action</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The action to add an element.</span>
@@ -9192,12 +9399,7 @@ print(session_state[&quot;name&quot;])  # None
 
               <details class="quote">
                 <summary>Source code in <code>src/routelit/domain.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">265</span>
-<span class="normal">266</span>
-<span class="normal">267</span>
-<span class="normal">268</span>
-<span class="normal">269</span>
-<span class="normal">270</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">270</span>
 <span class="normal">271</span>
 <span class="normal">272</span>
 <span class="normal">273</span>
@@ -9255,7 +9457,12 @@ print(session_state[&quot;name&quot;])  # None
 <span class="normal">325</span>
 <span class="normal">326</span>
 <span class="normal">327</span>
-<span class="normal">328</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">PropertyDict</span><span class="p">:</span>
+<span class="normal">328</span>
+<span class="normal">329</span>
+<span class="normal">330</span>
+<span class="normal">331</span>
+<span class="normal">332</span>
+<span class="normal">333</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">PropertyDict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A dictionary that can be accessed as attributes.</span>
 <span class="sd">    Example:</span>
@@ -9377,14 +9584,14 @@ print(session_state[&quot;name&quot;])  # None
 
               <details class="quote">
                 <summary>Source code in <code>src/routelit/domain.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 93</span>
-<span class="normal"> 94</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 94</span>
 <span class="normal"> 95</span>
 <span class="normal"> 96</span>
 <span class="normal"> 97</span>
 <span class="normal"> 98</span>
 <span class="normal"> 99</span>
-<span class="normal">100</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
+<span class="normal">100</span>
+<span class="normal">101</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">RemoveAction</span><span class="p">(</span><span class="n">Action</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The action to remove an element.</span>
@@ -9443,8 +9650,7 @@ print(session_state[&quot;name&quot;])  # None
 
               <details class="quote">
                 <summary>Source code in <code>src/routelit/domain.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">60</span>
-<span class="normal">61</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">61</span>
 <span class="normal">62</span>
 <span class="normal">63</span>
 <span class="normal">64</span>
@@ -9453,7 +9659,8 @@ print(session_state[&quot;name&quot;])  # None
 <span class="normal">67</span>
 <span class="normal">68</span>
 <span class="normal">69</span>
-<span class="normal">70</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
+<span class="normal">70</span>
+<span class="normal">71</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">RouteLitElement</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The element to be rendered by the RouteLit app.</span>
@@ -9513,15 +9720,15 @@ print(session_state[&quot;name&quot;])  # None
 
               <details class="quote">
                 <summary>Source code in <code>src/routelit/domain.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">30</span>
-<span class="normal">31</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">31</span>
 <span class="normal">32</span>
 <span class="normal">33</span>
 <span class="normal">34</span>
 <span class="normal">35</span>
 <span class="normal">36</span>
 <span class="normal">37</span>
-<span class="normal">38</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">RouteLitEvent</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">):</span>
+<span class="normal">38</span>
+<span class="normal">39</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">RouteLitEvent</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The event to be executed by the RouteLit app.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -9580,8 +9787,7 @@ This class should be implemented by the web framework you want to integrate with
 
               <details class="quote">
                 <summary>Source code in <code>src/routelit/domain.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">124</span>
-<span class="normal">125</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">125</span>
 <span class="normal">126</span>
 <span class="normal">127</span>
 <span class="normal">128</span>
@@ -9691,7 +9897,12 @@ This class should be implemented by the web framework you want to integrate with
 <span class="normal">232</span>
 <span class="normal">233</span>
 <span class="normal">234</span>
-<span class="normal">235</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">RouteLitRequest</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">RouteLitRequest</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The request class for the RouteLit app.</span>
 <span class="sd">    This class should be implemented by the web framework you want to integrate with.</span>
@@ -9703,6 +9914,10 @@ This class should be implemented by the web framework you want to integrate with
 
     <span class="nd">@abstractmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_headers</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+        <span class="k">pass</span>
+
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_path_params</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
         <span class="k">pass</span>
 
     <span class="nd">@abstractmethod</span>
@@ -9852,8 +10067,7 @@ This class should be implemented by the web framework you want to integrate with
 
               <details class="quote">
                 <summary>Source code in <code>src/routelit/domain.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">41</span>
-<span class="normal">42</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">42</span>
 <span class="normal">43</span>
 <span class="normal">44</span>
 <span class="normal">45</span>
@@ -9868,7 +10082,8 @@ This class should be implemented by the web framework you want to integrate with
 <span class="normal">54</span>
 <span class="normal">55</span>
 <span class="normal">56</span>
-<span class="normal">57</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">SessionKeys</span><span class="p">(</span><span class="n">NamedTuple</span><span class="p">):</span>
+<span class="normal">57</span>
+<span class="normal">58</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">SessionKeys</span><span class="p">(</span><span class="n">NamedTuple</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The keys to the session state of the RouteLit app.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -9989,15 +10204,15 @@ from the root to the target element.</p>
 
               <details class="quote">
                 <summary>Source code in <code>src/routelit/domain.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">103</span>
-<span class="normal">104</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">104</span>
 <span class="normal">105</span>
 <span class="normal">106</span>
 <span class="normal">107</span>
 <span class="normal">108</span>
 <span class="normal">109</span>
 <span class="normal">110</span>
-<span class="normal">111</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
+<span class="normal">111</span>
+<span class="normal">112</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">UpdateAction</span><span class="p">(</span><span class="n">Action</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The action to update the props of an element.</span>
