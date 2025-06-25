@@ -37,7 +37,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update sub-modules to latest main
+        run: git submodule update --remote --recursive
 
       - name: Set up the environment
         uses: ./.github/actions/setup-python-env

@@ -1,5 +1,4 @@
 version = 1
-revision = 1
 requires-python = ">=3.9, <4.0"
 
 [[package]]
@@ -869,7 +868,7 @@ wheels = [
 
 [[package]]
 name = "routelit"
-version = "0.2.3"
+version = "0.3.0"
 source = { editable = "." }
 
 [package.dev-dependencies]
