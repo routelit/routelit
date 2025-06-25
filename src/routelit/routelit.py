@@ -23,6 +23,7 @@ from .assets_utils import get_vite_components_assets
 from .builder import RouteLitBuilder
 from .domain import (
     ActionsResponse,
+    Head,
     PropertyDict,
     RouteLitElement,
     RouteLitRequest,
@@ -135,7 +136,7 @@ class RouteLit(Generic[BuilderType]):
         ```
         """
         if request.method == "GET":
-            return self.handle_get_request(view_fn, request, should_inject_builder, *args, **kwargs)
+            return self.handle_get_request(request, **kwargs)
         elif request.method == "POST":
             return self.handle_post_request(view_fn, request, should_inject_builder, *args, **kwargs)
         else:
@@ -144,15 +145,27 @@ class RouteLit(Generic[BuilderType]):
 
     def handle_get_request(
         self,
-        view_fn: ViewFn,
         request: RouteLitRequest,
-        should_inject_builder: Optional[bool] = None,
-        *args: Any,
         **kwargs: Any,
     ) -> RouteLitResponse:
-        should_inject_builder = (
-            should_inject_builder if should_inject_builder is not None else self.should_inject_builder
-        )
+        """ "
+        Handle a GET request.
+        If the session state is present, it will be cleared.
+        The head title and description can be passed as kwargs.
+        Example:
+        ```python
+        return routelit_adapter.response(build_signup_view, head_title="Signup", head_description="Signup page")
+        ```
+
+        Args:
+            request (RouteLitRequest): The request object.
+            **kwargs (Dict[str, Any]): Additional keyword arguments.
+                head_title (Optional[str]): The title of the head.
+                head_description (Optional[str]): The description of the head.
+
+        Returns:
+            RouteLitResponse: The response object.
+        """
         session_keys = request.get_session_keys()
         ui_key, state_key, fragment_addresses_key, fragment_params_key = session_keys
         if state_key in self.session_storage:
@@ -160,22 +173,12 @@ class RouteLit(Generic[BuilderType]):
             self.session_storage.pop(state_key, None)
             self.session_storage.pop(fragment_addresses_key, None)
             self.session_storage.pop(fragment_params_key, None)
-        builder = self.BuilderClass(request, session_state=PropertyDict({}), fragments={})
-        with self._set_builder_context(builder):
-            if should_inject_builder:
-                view_fn(builder, *args, **kwargs)
-            else:
-                view_fn(*args, **kwargs)
-        elements = builder.get_elements()
-        self.session_storage[ui_key] = elements
-        self.session_storage[state_key] = builder.session_state.get_data()
-        self.session_storage[fragment_addresses_key] = builder.get_fragments()
-        # Initialize fragment_params_key to empty dict if not present
-        if fragment_params_key not in self.session_storage:
-            self.session_storage[fragment_params_key] = {}
         return RouteLitResponse(
-            elements=elements,
-            head=builder.get_head(),
+            elements=[],
+            head=Head(
+                title=kwargs.get("head_title"),
+                description=kwargs.get("head_description"),
+            ),
         )
 
     def _get_prev_keys(self, request: RouteLitRequest, session_keys: SessionKeys) -> Tuple[bool, SessionKeys]:
@@ -227,7 +230,10 @@ class RouteLit(Generic[BuilderType]):
             session_state = self.session_storage.get(session_keys.state_key, {})
             events = session_state.get(f"__events4later_{form_id}", {})
             events[event["componentId"]] = event
-            self.session_storage[session_keys.state_key] = {**session_state, f"__events4later_{form_id}": events}
+            self.session_storage[session_keys.state_key] = {
+                **session_state,
+                f"__events4later_{form_id}": events,
+            }
             return True
         return False
 
@@ -255,6 +261,8 @@ class RouteLit(Generic[BuilderType]):
             prev_elements, maybe_prev_fragment_elements = self._get_prev_elements_at_fragment(
                 prev_session_keys, fragment_id
             )
+            if is_navigation_event:
+                self._clear_session_state(prev_session_keys)
             prev_session_state = self.session_storage.get(prev_session_keys.state_key, {})
             prev_fragments = self.session_storage.get(prev_session_keys.fragment_addresses_key, {})
             builder = self.BuilderClass(
@@ -279,8 +287,6 @@ class RouteLit(Generic[BuilderType]):
                 fragments=builder.get_fragments(),
                 fragment_id=fragment_id,
             )
-            if is_navigation_event:
-                self._clear_session_state(prev_session_keys)
             actions = compare_elements(maybe_prev_fragment_elements or prev_elements, elements)
             target: Literal["app", "fragment"] = "app" if fragment_id is None else "fragment"
             action_response = ActionsResponse(actions=actions, target=target)
@@ -345,7 +351,10 @@ class RouteLit(Generic[BuilderType]):
                 }
             }
             all_fragment_params = self.session_storage.get(session_keys.fragment_params_key, {})
-            self.session_storage[session_keys.fragment_params_key] = {**all_fragment_params, **fragment_params_by_key}
+            self.session_storage[session_keys.fragment_params_key] = {
+                **all_fragment_params,
+                **fragment_params_by_key,
+            }
         else:
             fragment_params = self.session_storage.get(session_keys.fragment_params_key, {}).get(fragment_key, {})
             args = fragment_params.get("args", [])

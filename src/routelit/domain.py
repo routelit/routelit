@@ -7,6 +7,7 @@ from typing import (
     Iterator,
     List,
     Literal,
+    Mapping,
     MutableMapping,
     NamedTuple,
     Optional,
@@ -133,6 +134,10 @@ class RouteLitRequest(ABC):
 
     @abstractmethod
     def get_headers(self) -> Dict[str, str]:
+        pass
+
+    @abstractmethod
+    def get_path_params(self) -> Optional[Mapping[str, Any]]:
         pass
 
     @abstractmethod

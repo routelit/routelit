@@ -1,4 +1,4 @@
-from typing import Any, ClassVar, Dict, List, MutableMapping
+from typing import Any, ClassVar, Dict, List, Mapping, MutableMapping, Optional
 
 import pytest
 
@@ -27,6 +27,7 @@ class MockRequestBuilder(RouteLitRequest):
         self._headers = {}
         self._cookies = {}
         self._query_params = {}
+        self._path_params = {}
 
     @property
     def method(self):
@@ -61,6 +62,9 @@ class MockRequestBuilder(RouteLitRequest):
     # --- Implement missing abstract methods ---
     def get_headers(self) -> MutableMapping[str, str]:
         return self._headers
+
+    def get_path_params(self) -> Optional[Mapping[str, Any]]:
+        return self._path_params
 
     def get_host(self) -> str:
         return self._host
