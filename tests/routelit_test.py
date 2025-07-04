@@ -1296,14 +1296,14 @@ class TestRouteLit:
         routelit.session_storage[session_keys.fragment_addresses_key] = {}
         routelit.session_storage[session_keys.fragment_params_key] = {}
 
-        # Test using ui property with should_inject_builder=False
+        # Test using ui property with inject_builder=False
         def view_with_ui_property():
             routelit.ui.text("Hello from ui property!", key="ui-text")
             routelit.ui.session_state["from_ui"] = True
 
         with patch("routelit.routelit.compare_elements") as mock_compare:
             mock_compare.return_value = []
-            result = routelit.response(view_with_ui_property, request, should_inject_builder=False)
+            result = routelit.response(view_with_ui_property, request, inject_builder=False)
 
         # Verify the response is a dict (POST response)
         assert isinstance(result, dict)
@@ -1689,10 +1689,10 @@ class TestRouteLit:
         # Fragment params should be initialized
         assert session_keys.fragment_params_key in routelit.session_storage
 
-    def test_default_should_inject_builder_true(self, mock_session_storage):
-        """Test that should_inject_builder defaults to True in constructor"""
+    def test_default_inject_builder_true(self, mock_session_storage):
+        """Test that inject_builder defaults to True in constructor"""
         routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage)
-        assert routelit.should_inject_builder is True
+        assert routelit.inject_builder is True
 
         def view_with_builder(builder, **kwargs):
             builder.text("Hello with builder", key="builder-text")
@@ -1721,10 +1721,10 @@ class TestRouteLit:
         assert created_elements[0].props["text"] == "Hello with builder"
         assert routelit.session_storage[session_keys.state_key]["builder_injected"] is True
 
-    def test_should_inject_builder_false_in_constructor(self, mock_session_storage):
-        """Test setting should_inject_builder=False in constructor"""
-        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, should_inject_builder=False)
-        assert routelit.should_inject_builder is False
+    def test_inject_builder_false_in_constructor(self, mock_session_storage):
+        """Test setting inject_builder=False in constructor"""
+        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, inject_builder=False)
+        assert routelit.inject_builder is False
 
         def view_without_builder(**kwargs):
             routelit.ui.text("Hello without builder", key="no-builder-text")
@@ -1753,10 +1753,10 @@ class TestRouteLit:
         assert created_elements[0].props["text"] == "Hello without builder"
         assert routelit.session_storage[session_keys.state_key]["no_builder_injected"] is True
 
-    def test_should_inject_builder_override_per_request(self, mock_session_storage):
-        """Test overriding should_inject_builder on a per-request basis"""
+    def test_inject_builder_override_per_request(self, mock_session_storage):
+        """Test overriding inject_builder on a per-request basis"""
         # Set default to False
-        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, should_inject_builder=False)
+        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, inject_builder=False)
 
         def view_with_builder(builder, **kwargs):
             builder.text("Overridden to inject", key="override-text")
@@ -1785,7 +1785,7 @@ class TestRouteLit:
         # Override to inject builder (opposite of default)
         with patch("routelit.routelit.compare_elements") as mock_compare1:
             mock_compare1.return_value = []
-            result1 = routelit.response(view_with_builder, request1, should_inject_builder=True)
+            result1 = routelit.response(view_with_builder, request1, inject_builder=True)
 
         assert isinstance(result1, dict)
         assert "actions" in result1
@@ -1804,29 +1804,29 @@ class TestRouteLit:
         assert len(created_elements2) == 1
         assert created_elements2[0].props["text"] == "Using ui property"
 
-    def test_should_inject_builder_get_request_with_override(self, mock_session_storage):
-        """Test should_inject_builder override specifically for GET requests"""
+    def test_inject_builder_get_request_with_override(self, mock_session_storage):
+        """Test inject_builder override specifically for GET requests"""
         routelit = RouteLit(
             BuilderClass=MockBuilder,
             session_storage=mock_session_storage,
-            should_inject_builder=False,  # Default to False
+            inject_builder=False,  # Default to False
         )
 
         def view_with_builder(builder, **kwargs):
             builder.text("GET with builder injection", key="get-builder-text")
 
         request = MockRequest(method="GET")
-        result = routelit.handle_get_request(request, should_inject_builder=True)
+        result = routelit.handle_get_request(request, inject_builder=True)
 
         # GET requests now return empty elements regardless of view function
         assert len(result.elements) == 0
 
-    def test_should_inject_builder_post_request_with_override(self, mock_session_storage):
-        """Test should_inject_builder override specifically for POST requests"""
+    def test_inject_builder_post_request_with_override(self, mock_session_storage):
+        """Test inject_builder override specifically for POST requests"""
         routelit = RouteLit(
             BuilderClass=MockBuilder,
             session_storage=mock_session_storage,
-            should_inject_builder=False,  # Default to False
+            inject_builder=False,  # Default to False
         )
 
         def view_with_builder(builder, **kwargs):
@@ -1836,14 +1836,14 @@ class TestRouteLit:
 
         with patch("routelit.routelit.compare_elements") as mock_compare:
             mock_compare.return_value = []
-            result = routelit.handle_post_request(view_with_builder, request, should_inject_builder=True)
+            result = routelit.handle_post_request(view_with_builder, request, inject_builder=True)
 
             assert isinstance(result, dict)
             assert "actions" in result
 
-    def test_should_inject_builder_none_uses_default(self, mock_session_storage):
-        """Test that None for should_inject_builder uses the instance default"""
-        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, should_inject_builder=False)
+    def test_inject_builder_none_uses_default(self, mock_session_storage):
+        """Test that None for inject_builder uses the instance default"""
+        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, inject_builder=False)
 
         def view_without_builder(**kwargs):
             routelit.ui.text("Using default behavior", key="default-text")
@@ -1860,7 +1860,7 @@ class TestRouteLit:
         # Pass None explicitly - should use instance default (False)
         with patch("routelit.routelit.compare_elements") as mock_compare:
             mock_compare.return_value = []
-            result = routelit.response(view_without_builder, request, should_inject_builder=None)
+            result = routelit.response(view_without_builder, request, inject_builder=None)
 
         assert isinstance(result, dict)
         assert "actions" in result
@@ -1873,7 +1873,7 @@ class TestRouteLit:
         routelit = RouteLit(
             BuilderClass=MockBuilder,
             session_storage=mock_session_storage,
-            should_inject_builder=False,  # Default to False
+            inject_builder=False,  # Default to False
         )
 
         @routelit.fragment("mixed_fragment")
@@ -1897,7 +1897,7 @@ class TestRouteLit:
 
         with patch("routelit.routelit.compare_elements") as mock_compare:
             mock_compare.return_value = []
-            result = routelit.response(main_view, request, should_inject_builder=True)
+            result = routelit.response(main_view, request, inject_builder=True)
 
         # Should have both main content and fragment
         assert isinstance(result, dict)
@@ -1909,7 +1909,7 @@ class TestRouteLit:
 
     def test_exception_handling_preserves_injection_setting(self, mock_session_storage):
         """Test that exception handling preserves injection settings"""
-        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, should_inject_builder=False)
+        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, inject_builder=False)
 
         rerun_count = 0
 
@@ -1927,7 +1927,7 @@ class TestRouteLit:
             mock_compare.return_value = []
 
             # Override to inject builder
-            result = routelit.handle_post_request(view_with_rerun, request, should_inject_builder=True)
+            result = routelit.handle_post_request(view_with_rerun, request, inject_builder=True)
 
             # Should have succeeded with injection
             assert isinstance(result, dict)
@@ -1935,7 +1935,7 @@ class TestRouteLit:
 
     def test_nested_builders_inherit_injection_context(self, mock_session_storage):
         """Test that nested builders work correctly with injection settings"""
-        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, should_inject_builder=True)
+        routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage, inject_builder=True)
 
         def view_with_expander(builder, **kwargs):
             builder.text("Main content", key="main-text")
@@ -1965,8 +1965,8 @@ class TestRouteLit:
         assert created_elements[1].children[0].props["text"] == "Nested content"
 
     def test_backwards_compatibility_with_old_signature(self, mock_session_storage):
-        """Test backwards compatibility when should_inject_builder is not specified"""
-        # Old way of creating RouteLit without should_inject_builder
+        """Test backwards compatibility when inject_builder is not specified"""
+        # Old way of creating RouteLit without inject_builder
         routelit = RouteLit(BuilderClass=MockBuilder, session_storage=mock_session_storage)
 
         def traditional_view(builder, **kwargs):

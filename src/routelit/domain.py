@@ -267,6 +267,13 @@ class RouteLitResponse:
         return json.dumps([asdict(element) for element in self.elements])
 
 
+class BuilderTranstionParams(NamedTuple):
+    prev_elements: List[RouteLitElement]
+    maybe_prev_fragment_elements: Optional[List[RouteLitElement]]
+    prev_session_state: MutableMapping[str, Any]
+    prev_fragments: MutableMapping[str, List[int]]
+
+
 class PropertyDict:
     """
     A dictionary that can be accessed as attributes.

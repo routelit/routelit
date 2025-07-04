@@ -1,6 +1,6 @@
+import asyncio
 import hashlib
-from collections.abc import MutableMapping
-from typing import Any, Callable, ClassVar, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, ClassVar, Dict, List, Literal, MutableMapping, Optional, Tuple, Union
 
 from routelit.domain import (
     AssetTarget,
@@ -61,6 +61,8 @@ class RouteLitBuilder:
         session_state: PropertyDict,
         fragments: MutableMapping[str, List[int]],
         initial_fragment_id: Optional[str] = None,
+        event_queue: Optional[asyncio.Queue] = None,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
         prefix: Optional[str] = None,
         parent_element: Optional[RouteLitElement] = None,
         parent_builder: Optional["RouteLitBuilder"] = None,
@@ -71,7 +73,9 @@ class RouteLitBuilder:
         self.initial_fragment_id = initial_fragment_id
         self.fragments = fragments
         self.address = address
-        self.head = Head()
+        self._event_queue = event_queue
+        self._loop = loop
+        self.head: Optional[Head] = None
         # Set prefix based on parent element if not explicitly provided
         if prefix is None:
             self.prefix = parent_element.key if parent_element else ""
@@ -99,6 +103,20 @@ class RouteLitBuilder:
         # Simplify to just use the current prefix which is already properly initialized
         return self.prefix
 
+    def _schedule_event(self, event_data: Any) -> None:
+        """Schedule an event to be put in the queue from sync context"""
+        if self._event_queue and self._loop:
+            # Schedule the coroutine to run in the event loop
+            asyncio.run_coroutine_threadsafe(self._event_queue.put(event_data), self._loop)
+
+    @property
+    def event_queue(self) -> asyncio.Queue:
+        return self._event_queue
+
+    def _set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Internal method to set the event loop reference"""
+        self._loop = loop
+
     def _get_next_address(self) -> List[int]:
         if self.active_child_builder:
             return [
@@ -122,6 +140,8 @@ class RouteLitBuilder:
             self.request,
             fragments=self.fragments,
             prefix=element.key,
+            event_queue=self._event_queue,
+            loop=self._loop,
             session_state=self.session_state,
             parent_element=element,
             parent_builder=self,
@@ -207,6 +227,7 @@ class RouteLitBuilder:
                 element_address = element.address
                 if element_address is not None:
                     self.fragments[element.key] = element_address
+            self._schedule_event(True)
 
     def _add_non_widget(self, element: RouteLitElement) -> RouteLitElement:
         self._append_element(element)
@@ -1011,6 +1032,8 @@ class RouteLitBuilder:
         raise RerunException(self.session_state.get_data(), scope=scope)
 
     def get_head(self) -> Head:
+        if self.head is None:
+            self.head = Head()
         return self.head
 
     def set_page_config(self, page_title: Optional[str] = None, page_description: Optional[str] = None) -> None:

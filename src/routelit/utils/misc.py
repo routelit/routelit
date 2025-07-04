@@ -1,6 +1,6 @@
 from typing import List, Optional, Union
 
-from .domain import Action, AddAction, RemoveAction, RouteLitElement, UpdateAction
+from ..domain import Action, AddAction, RemoveAction, RouteLitElement, UpdateAction
 
 
 def compare_elements(

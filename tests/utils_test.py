@@ -1,5 +1,5 @@
 from routelit.domain import AddAction, RemoveAction, RouteLitElement, UpdateAction
-from routelit.utils import compare_elements
+from routelit.utils.misc import compare_elements
 
 
 def test_compare_elements_empty_lists():
