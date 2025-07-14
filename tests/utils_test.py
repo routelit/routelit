@@ -1,16 +1,19 @@
-from routelit.domain import AddAction, RemoveAction, RouteLitElement, UpdateAction
-from routelit.utils.misc import compare_elements
+import pytest
+
+from routelit.domain import AddAction, RemoveAction, RouteLitElement, SessionKeys, UpdateAction
+from routelit.utils.async_to_sync_gen import async_to_sync_generator
+from routelit.utils.misc import build_view_task_key, compare_elements, get_elements_at_address, set_elements_at_address
 
 
 def test_compare_elements_empty_lists():
     """Test comparison of empty lists returns no actions."""
-    assert compare_elements([], []) == []
+    assert compare_elements([], [], target="app") == []
 
 
 def test_add_single_element():
     """Test adding a single element."""
     element = RouteLitElement(name="div", props={"class": "container"}, key="elem1")
-    result = compare_elements([], [element])
+    result = compare_elements([], [element], target="app")
 
     assert len(result) == 1
     assert isinstance(result[0], AddAction)
@@ -23,7 +26,7 @@ def test_add_single_element():
 def test_remove_single_element():
     """Test removing a single element."""
     element = RouteLitElement(name="div", props={"class": "container"}, key="elem1")
-    result = compare_elements([element], [])
+    result = compare_elements([element], [], target="app")
 
     assert len(result) == 1
     assert isinstance(result[0], RemoveAction)
@@ -36,7 +39,7 @@ def test_update_element_props():
     element_a = RouteLitElement(name="div", props={"class": "container"}, key="elem1")
     element_b = RouteLitElement(name="div", props={"class": "container-fluid"}, key="elem1")
 
-    result = compare_elements([element_a], [element_b])
+    result = compare_elements([element_a], [element_b], target="app")
 
     assert len(result) == 1
     assert isinstance(result[0], UpdateAction)
@@ -51,7 +54,7 @@ def test_reorder_elements():
     element_b = RouteLitElement(name="div", props={"id": "b"}, key="b")
 
     # Test moving element b before element a
-    result = compare_elements([element_a, element_b], [element_b, element_a])
+    result = compare_elements([element_a, element_b], [element_b, element_a], target="app")
 
     # The implementation should use remove and add actions to simulate a move
     assert len(result) == 2
@@ -78,7 +81,7 @@ def test_multiple_operations():
         RouteLitElement(name="h1", props={"id": "d"}, key="d"),
     ]
 
-    result = compare_elements(elements_a, elements_b)
+    result = compare_elements(elements_a, elements_b, target="app")
 
     # We expect: update b, remove c, add d
     assert len(result) == 3
@@ -120,7 +123,7 @@ def test_nested_elements():
         ],
     )
 
-    result = compare_elements([parent_a], [parent_b])
+    result = compare_elements([parent_a], [parent_b], target="app")
 
     # We expect: update child1 and add child2
     assert len(result) == 2
@@ -168,7 +171,7 @@ def test_deeply_nested_elements():
         ],
     )
 
-    result = compare_elements([deep_element_a], [deep_element_b])
+    result = compare_elements([deep_element_a], [deep_element_b], target="app")
 
     assert len(result) == 1
     assert isinstance(result[0], UpdateAction)
@@ -182,7 +185,7 @@ def test_elements_with_same_properties():
     element_a = RouteLitElement(name="div", props={"class": "container"}, key="elem1")
     element_b = RouteLitElement(name="div", props={"class": "container"}, key="elem1")
 
-    result = compare_elements([element_a], [element_b])
+    result = compare_elements([element_a], [element_b], target="app")
 
     assert len(result) == 0
 
@@ -204,7 +207,7 @@ def test_complex_reordering_with_mixed_operations():
         # a1 is removed
     ]
 
-    result = compare_elements(elements_a, elements_b)
+    result = compare_elements(elements_a, elements_b, target="app")
 
     # From the test output, we can see the actual implementation generates:
     # - Remove a1
@@ -238,3 +241,171 @@ def test_complex_reordering_with_mixed_operations():
     m1_add = next(a for a in actions_by_key["m1"] if isinstance(a, AddAction))
     assert "class" in m1_add.element.props
     assert m1_add.element.props["class"] == "content"
+
+
+def test_build_view_task_key():
+    """Test building view task keys"""
+
+    def test_view(builder):
+        pass
+
+    session_keys = SessionKeys(
+        ui_key="test:ui",
+        state_key="test:state",
+        fragment_addresses_key="test:fragments:addresses",
+        fragment_params_key="test:fragments:params",
+        view_tasks_key="test:view_tasks",
+    )
+
+    # Test with no fragment
+    key = build_view_task_key(test_view, None, session_keys)
+    assert key == "test:view_tasks-test_view#app"
+
+    # Test with fragment
+    key = build_view_task_key(test_view, "my_fragment", session_keys)
+    assert key == "test:view_tasks-test_view#my_fragment"
+
+
+def test_get_elements_at_address():
+    """Test getting elements at specific address"""
+    # Create a nested structure
+    child1 = RouteLitElement(name="span", props={"text": "child1"}, key="child1")
+    child2 = RouteLitElement(name="span", props={"text": "child2"}, key="child2")
+    parent = RouteLitElement(name="div", props={}, key="parent", children=[child1, child2])
+    root = RouteLitElement(name="div", props={}, key="root", children=[parent])
+
+    elements = [root]
+
+    # Test getting root level
+    result = get_elements_at_address(elements, [0])
+    assert result == [parent]
+
+    # Test getting nested level - should return all children of the parent
+    result = get_elements_at_address(elements, [0, 0])
+    assert result == [child1, child2]  # All children of parent
+
+    # Test getting second child specifically - this should fail because we're trying to access
+    # a child of a child that doesn't exist
+    result = get_elements_at_address(elements, [0, 1])
+    assert result == []  # Invalid address, returns empty list
+
+
+def test_get_elements_at_address_no_children():
+    """Test getting elements when element has no children"""
+    element = RouteLitElement(name="div", props={}, key="test")
+    elements = [element]
+
+    with pytest.raises(ValueError, match="Element at index 0 has no children"):
+        get_elements_at_address(elements, [0, 0])
+
+
+def test_set_elements_at_address():
+    """Test setting elements at specific address"""
+    # Create initial structure
+    child1 = RouteLitElement(name="span", props={"text": "old"}, key="child1")
+    parent = RouteLitElement(name="div", props={}, key="parent", children=[child1])
+    root = RouteLitElement(name="div", props={}, key="root", children=[parent])
+
+    elements = [root]
+
+    # Create new elements to set
+    new_child = RouteLitElement(name="span", props={"text": "new"}, key="new_child")
+    new_elements = [new_child]
+
+    # Test setting at address
+    result = set_elements_at_address(elements, [0, 0], new_elements)
+
+    # Verify the structure was updated
+    assert result[0].children[0].children[0].props["text"] == "new"
+    assert result[0].children[0].children[0].key == "new_child"
+
+
+def test_set_elements_at_address_invalid():
+    """Test setting elements with invalid address"""
+    element = RouteLitElement(name="div", props={}, key="test")
+    elements = [element]
+    new_elements = [RouteLitElement(name="span", props={}, key="new")]
+
+    # Test invalid index
+    result = set_elements_at_address(elements, [999], new_elements)
+    assert result == elements  # Should return unchanged
+
+    # Test negative index
+    result = set_elements_at_address(elements, [-1], new_elements)
+    assert result == elements  # Should return unchanged
+
+
+def test_set_elements_at_address_type_error():
+    """Test setting elements with wrong type"""
+    elements = [RouteLitElement(name="div", props={}, key="test")]
+
+    with pytest.raises(ValueError, match="Cannot set object at address"):
+        set_elements_at_address(elements, [0, 0], "not a list")
+
+
+@pytest.mark.asyncio
+async def test_async_to_sync_generator():
+    """Test converting async generator to sync generator"""
+
+    async def async_gen():
+        yield 1
+        yield 2
+        yield 3
+
+    sync_gen = async_to_sync_generator(async_gen())
+    results = list(sync_gen)
+    assert results == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_async_to_sync_generator_empty():
+    """Test converting empty async generator"""
+
+    async def empty_gen():
+        if False:
+            yield 1
+
+    sync_gen = async_to_sync_generator(empty_gen())
+    results = list(sync_gen)
+    assert results == []
+
+
+@pytest.mark.asyncio
+async def test_async_to_sync_generator_exception():
+    """Test async generator with exception"""
+
+    async def error_gen():
+        yield 1
+        raise ValueError("Test error")
+        yield 2
+
+    sync_gen = async_to_sync_generator(error_gen())
+    results = []
+    with pytest.raises(ValueError, match="Test error"):
+        for item in sync_gen:
+            results.append(item)
+    assert results == [1]
+
+
+@pytest.mark.asyncio
+async def test_async_to_sync_generator_early_close():
+    """Test closing sync generator early"""
+
+    async def async_gen():
+        try:
+            yield 1
+            yield 2
+            yield 3
+        except GeneratorExit:
+            # Cleanup
+            pass
+
+    sync_gen = async_to_sync_generator(async_gen())
+    results = []
+    for i, item in enumerate(sync_gen):
+        results.append(item)
+        if i == 0:  # Close after first item
+            sync_gen.close()
+            break
+
+    assert results == [1]

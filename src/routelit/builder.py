@@ -1,17 +1,36 @@
 import asyncio
 import hashlib
-from typing import Any, Callable, ClassVar, Dict, List, Literal, MutableMapping, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    List,
+    Literal,
+    MutableMapping,
+    Optional,
+    Tuple,
+    Union,
+)
 
 from routelit.domain import (
+    Action,
     AssetTarget,
+    BuilderTarget,
+    FreshBoundaryAction,
     Head,
-    PropertyDict,
+    LastAction,
+    NoChangeAction,
+    RerunAction,
     RerunType,
     RouteLitElement,
     RouteLitEvent,
     RouteLitRequest,
+    SetAction,
+    ViewTaskDoneAction,
 )
-from routelit.exceptions import RerunException
+from routelit.exceptions import RerunException, StopException
+from routelit.utils.property_dict import PropertyDict
 
 VerticalAlignment = Literal["top", "center", "bottom"]
 """
@@ -60,38 +79,37 @@ class RouteLitBuilder:
         request: RouteLitRequest,
         session_state: PropertyDict,
         fragments: MutableMapping[str, List[int]],
+        prev_elements: Optional[List[RouteLitElement]] = None,
+        cancel_event: Optional[asyncio.Event] = None,
         initial_fragment_id: Optional[str] = None,
+        initial_target: Optional[BuilderTarget] = None,
         event_queue: Optional[asyncio.Queue] = None,
         loop: Optional[asyncio.AbstractEventLoop] = None,
-        prefix: Optional[str] = None,
         parent_element: Optional[RouteLitElement] = None,
         parent_builder: Optional["RouteLitBuilder"] = None,
-        address: Optional[List[int]] = None,
-        elements: Optional[List[RouteLitElement]] = None,
     ):
         self.request = request
         self.initial_fragment_id = initial_fragment_id
+        self.initial_target = (
+            initial_target if initial_target is not None else "app" if initial_fragment_id is None else "fragment"
+        )
         self.fragments = fragments
-        self.address = address
+        self.prev_elements = prev_elements
+        self.has_prev_diff = False
         self._event_queue = event_queue
         self._loop = loop
+        self.cancel_event = cancel_event
         self.head: Optional[Head] = None
-        # Set prefix based on parent element if not explicitly provided
-        if prefix is None:
-            self.prefix = parent_element.key if parent_element else ""
-        else:
-            self.prefix = prefix
-        self.elements: List[RouteLitElement] = elements or []
-        self.num_non_widget = 0
+        self._parent_element = parent_element or RouteLitElement.create_root_element()
+        # self.elements_count = 0
         self.session_state = session_state
-        self.parent_element = parent_element
         self.parent_builder = parent_builder
-        if parent_element:
-            parent_element.children = self.elements
         self.active_child_builder: Optional[RouteLitBuilder] = None
         self._prev_active_child_builder: Optional[RouteLitBuilder] = None
-        if prefix is None:
+        if self._parent_element.name == RouteLitElement.ROOT_ELEMENT_KEY:
             self._on_init()
+        self.q_by_name: Dict[str, int] = {}
+        self.should_rerun = False
 
     def _on_init(self) -> None:
         pass
@@ -100,58 +118,70 @@ class RouteLitBuilder:
         return self.request
 
     def _get_prefix(self) -> str:
-        # Simplify to just use the current prefix which is already properly initialized
-        return self.prefix
+        return self.active_child_builder._get_prefix() if self.active_child_builder else self._parent_element.key
 
-    def _schedule_event(self, event_data: Any) -> None:
-        """Schedule an event to be put in the queue from sync context"""
+    def _schedule_event(self, event_data: Action) -> bool:
+        """
+        Schedule an event to be put in the queue from sync context
+        Returns True if the event was scheduled, False otherwise.
+        """
         if self._event_queue and self._loop:
             # Schedule the coroutine to run in the event loop
             asyncio.run_coroutine_threadsafe(self._event_queue.put(event_data), self._loop)
+            return True
+        return False
 
     @property
-    def event_queue(self) -> asyncio.Queue:
-        return self._event_queue
+    def elements(self) -> List[RouteLitElement]:
+        return self._parent_element.get_children()
 
-    def _set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Internal method to set the event loop reference"""
-        self._loop = loop
+    @property
+    def elements_count(self) -> int:
+        return len(self.elements)
+
+    @property
+    def address(self) -> List[int]:
+        return self._parent_element.address or []
 
     def _get_next_address(self) -> List[int]:
         if self.active_child_builder:
-            return [
-                *(self.active_child_builder.address or []),
-                len(self.active_child_builder.elements),
-            ]
+            return self.active_child_builder._get_next_address()
         else:
-            return [*(self.address or []), len(self.elements)]
+            return [*self.address, self.elements_count]
 
     def _get_last_address(self) -> List[int]:
         if self.active_child_builder:
-            return [
-                *(self.active_child_builder.address or []),
-                len(self.active_child_builder.elements) - 1,
-            ]
+            return self.active_child_builder._get_last_address()
         else:
-            return [*(self.address or []), len(self.elements) - 1]
+            return [*self.address, self.elements_count - 1]
 
     def _build_nested_builder(self, element: RouteLitElement) -> "RouteLitBuilder":
+        if element.address is None:
+            element.address = self._get_last_address()
+        prev_elements = (
+            self.prev_elements
+            if self.prev_elements is not None and element.name == "fragment" and element.key == self.initial_fragment_id
+            else self.prev_elements[element.address[-1]].children
+            if self.prev_elements and element.address[-1] < len(self.prev_elements)
+            else None
+        )
         builder = self.__class__(
             self.request,
             fragments=self.fragments,
-            prefix=element.key,
             event_queue=self._event_queue,
             loop=self._loop,
+            cancel_event=self.cancel_event,
             session_state=self.session_state,
             parent_element=element,
             parent_builder=self,
-            address=self._get_last_address(),
+            initial_target=self.initial_target,
+            prev_elements=prev_elements,
         )
         return builder
 
     def _get_parent_form_id(self) -> Optional[str]:
-        if self.parent_element and self.parent_element.name == "form":
-            return self.parent_element.key
+        if self._parent_element and self._parent_element.name == "form":
+            return self._parent_element.key
         if self.active_child_builder:
             return self.active_child_builder._get_parent_form_id()
         if self._prev_active_child_builder:
@@ -159,15 +189,18 @@ class RouteLitBuilder:
         return None
 
     def _new_text_id(self, name: str) -> str:
-        no_of_non_widgets = (
-            self.num_non_widget if not self.active_child_builder else self.active_child_builder.num_non_widget
-        )
-        prefix = self.active_child_builder._get_prefix() if self.active_child_builder else self._get_prefix()
-        return f"{prefix}_{name}_{no_of_non_widgets}"
+        prefix = self._get_prefix()
+        q_by_name = self.active_child_builder.q_by_name if self.active_child_builder else self.q_by_name
+        if name in q_by_name:
+            q_by_name[name] += 1
+        else:
+            q_by_name[name] = 1
+        key = f"{prefix}_{name}_{q_by_name[name]}"
+        return key
 
     def _new_widget_id(self, name: str, label: str) -> str:
         hashed = hashlib.sha256(label.encode()).hexdigest()[:8]
-        prefix = self.active_child_builder._get_prefix() if self.active_child_builder else self._get_prefix()
+        prefix = self._get_prefix()
         return f"{prefix}_{name}_{hashed}"
 
     def _maybe_get_event(self, component_id: str) -> Optional[RouteLitEvent]:
@@ -222,19 +255,45 @@ class RouteLitBuilder:
         if self.active_child_builder:
             self.active_child_builder._append_element(element)
         else:
-            self.elements.append(element)
+            if self.cancel_event and self.cancel_event.is_set():
+                raise StopException("Builder cancelled")
+
+            self._parent_element.append_child(element)
+
             if element.name == "fragment" and element.key != self.initial_fragment_id:
                 element_address = element.address
                 if element_address is not None:
                     self.fragments[element.key] = element_address
-            self._schedule_event(True)
+            # skip sending action for fragment as root
+            if self.initial_target == "fragment" and element.name == "fragment":
+                return
+            # skip the first address for fragment as root
+            address = self._get_last_address()[1:] if self.initial_target == "fragment" else self._get_last_address()
+
+            if not self.has_prev_diff and self.prev_elements is not None:
+                last_index = address[-1]
+                if last_index < len(self.prev_elements):
+                    prev_element = self.prev_elements[last_index]
+                    if prev_element.key == element.key and prev_element.props == element.props:
+                        self._schedule_event(NoChangeAction(address=address, target=self.initial_target))
+                        return
+
+            if not self.has_prev_diff:
+                self.has_prev_diff = True
+                fresh_boundary_address = address[:-1] + [address[-1] - 1] if len(address) > 0 else []
+                self._schedule_event(FreshBoundaryAction(address=fresh_boundary_address, target=self.initial_target))
+
+            self._schedule_event(
+                SetAction(
+                    element=element.to_dict(),
+                    key=element.key,
+                    address=address,
+                    target=self.initial_target,
+                )
+            )
 
     def _add_non_widget(self, element: RouteLitElement) -> RouteLitElement:
         self._append_element(element)
-        if not self.active_child_builder:
-            self.num_non_widget += 1
-        else:
-            self.active_child_builder.num_non_widget += 1
         return element
 
     def _add_widget(self, element: RouteLitElement) -> None:
@@ -1024,11 +1083,16 @@ class RouteLitBuilder:
             ui.rerun()
         ```
         """
-        self.elements.clear()
+        self.should_rerun = True
         if clear_event:
             self.request.clear_event()
         if scope == "app":
             self.request.clear_fragment_id()
+        target = "app" if scope == "app" else self.initial_target
+        # when running in stream mode, we need to schedule the rerun action to the event queue
+        # so that the rerun action would be got with event queue loop can be cancelled
+        if self._schedule_event(RerunAction(address=[-1], target=target)):
+            return
         raise RerunException(self.session_state.get_data(), scope=scope)
 
     def get_head(self) -> Head:
@@ -1075,16 +1139,41 @@ class RouteLitBuilder:
         return self
 
     def get_elements(self) -> List[RouteLitElement]:
-        if self.initial_fragment_id and self.elements:
-            first_element_children = self.elements[0].children
+        """
+        Returns the elements of the current builder.
+        If the current builder is a fragment, it will return the elements of the first child builder.
+        """
+        if self.initial_fragment_id and self.elements_count > 0:
+            first_element_children = self.elements[0].get_children()
             return first_element_children if first_element_children is not None else []
         return self.elements
+
+    @property
+    def parent_element(self) -> RouteLitElement:
+        return self._parent_element
 
     def get_fragments(self) -> MutableMapping[str, List[int]]:
         return self.fragments
 
+    def handle_view_task_done(self) -> None:
+        self._schedule_event(
+            ViewTaskDoneAction(
+                address=[-1],
+                target=self.initial_target,
+            )
+        )
+
     def on_end(self) -> None:
+        # self.clear_form_submit()
         self.session_state.pop("__ignore_submit", None)
+        if self.should_rerun:
+            return  # skip the last action when should_rerun is True
+        self._schedule_event(
+            LastAction(
+                address=None,
+                target=self.initial_target,
+            )
+        )
 
     @classmethod
     def get_client_resource_paths(cls) -> List[AssetTarget]:

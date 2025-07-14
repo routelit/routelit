@@ -34,7 +34,6 @@
       </script>
       <script type="module" src="{{ LOCAL_COMPONENTS_SERVER }}/@vite/client"></script>
     {% else %}
-
       {% for assets_group in vite_assets %}
         {% for asset in assets_group.css_files %}
           <link rel="stylesheet" href="/routelit/{{ assets_group.package_name }}/{{ asset }}">
@@ -58,7 +57,6 @@
         <script src="/routelit/{{ js_asset }}"></script>
       {% endfor %}
     {% endif %}
-
 
     {% if RUN_MODE == "dev_components" and LOCAL_COMPONENTS_SERVER %}
       <script type="module" src="{{ LOCAL_COMPONENTS_SERVER }}/src/setup-dev.ts"></script>

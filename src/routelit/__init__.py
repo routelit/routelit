@@ -3,12 +3,13 @@ from .domain import (
     COOKIE_SESSION_KEY,
     Action,
     AssetTarget,
-    PropertyDict,
     RouteLitElement,
     RouteLitEvent,
     RouteLitRequest,
+    ViewFn,
 )
-from .routelit import RouteLit, ViewFn
+from .routelit import RouteLit
+from .utils.property_dict import PropertyDict
 
 __all__ = [
     "Action",

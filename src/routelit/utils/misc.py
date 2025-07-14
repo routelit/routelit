@@ -1,10 +1,21 @@
-from typing import List, Optional, Union
+from typing import List, Literal, Optional, Union
 
-from ..domain import Action, AddAction, RemoveAction, RouteLitElement, UpdateAction
+from ..domain import (
+    Action,
+    AddAction,
+    RemoveAction,
+    RouteLitElement,
+    SessionKeys,
+    UpdateAction,
+    ViewFn,
+)
 
 
 def compare_elements(
-    a: List[RouteLitElement], b: List[RouteLitElement], address: Optional[List[int]] = None
+    a: List[RouteLitElement],
+    b: List[RouteLitElement],
+    target: Literal["app", "fragment"],
+    address: Optional[List[int]] = None,
 ) -> List[Action]:
     """
     Compare two lists of elements and return a list of actions to transform the first list into the second.
@@ -36,7 +47,7 @@ def compare_elements(
     # Step 1: Process removals from right to left to avoid index shifts
     for key in sorted(keys_to_remove, key=lambda k: -a_map[k][0]):
         idx = current_state.index(key)
-        actions.append(RemoveAction(address=[*address, idx], key=key))
+        actions.append(RemoveAction(address=[*address, idx], key=key, target=target))
         current_state.pop(idx)
 
     # Step 2: Process position changes and additions
@@ -78,13 +89,17 @@ def compare_elements(
 
                 if old_elem.props != new_elem.props:
                     # Element moved AND props changed - remove and add
-                    actions.append(RemoveAction(address=[*address, current_idx], key=key))
-                    actions.append(AddAction(address=[*address, expected_idx], element=new_elem, key=key))
+                    actions.append(RemoveAction(address=[*address, current_idx], key=key, target=target))
+                    actions.append(
+                        AddAction(address=[*address, expected_idx], element=new_elem, key=key, target=target)
+                    )
                 else:
                     # Element moved but props unchanged - we could optimize with a special move action
                     # For now, simulate with remove and add
-                    actions.append(RemoveAction(address=[*address, current_idx], key=key))
-                    actions.append(AddAction(address=[*address, expected_idx], element=new_elem, key=key))
+                    actions.append(RemoveAction(address=[*address, current_idx], key=key, target=target))
+                    actions.append(
+                        AddAction(address=[*address, expected_idx], element=new_elem, key=key, target=target)
+                    )
             else:
                 # Position is correct, check if props need updating
                 old_elem = a_map[key][1]
@@ -96,6 +111,7 @@ def compare_elements(
                             address=[*address, current_idx],
                             props=new_elem.props,
                             key=key,
+                            target=target,
                         )
                     )
         else:
@@ -120,7 +136,7 @@ def compare_elements(
 
             # Add the new element
             new_elem = b_map[key][1]
-            actions.append(AddAction(address=[*address, insert_at], element=new_elem, key=key))
+            actions.append(AddAction(address=[*address, insert_at], element=new_elem, key=key, target=target))
             current_state.insert(insert_at, key)
 
     # Step 3: Process children recursively
@@ -136,7 +152,9 @@ def compare_elements(
                 old_children = a[old_idx].children or []
                 new_children = b[new_idx].children or []
 
-                child_actions = compare_elements(old_children, new_children, address=[*address, current_idx])
+                child_actions = compare_elements(
+                    old_children, new_children, target=target, address=[*address, current_idx]
+                )
                 actions.extend(child_actions)
 
     return actions
@@ -145,6 +163,10 @@ def compare_elements(
 def get_elements_at_address(elements: List[RouteLitElement], address: List[int]) -> List[RouteLitElement]:
     _elements = elements
     for idx in address:
+        if idx < 0 or idx >= len(_elements):
+            # If the address is invalid, return an empty list
+            # This can happen when the UI structure has changed and the stored address is no longer valid
+            return []
         children = _elements[idx].children
         if children is None:
             raise ValueError(f"Element at index {idx} has no children")
@@ -159,8 +181,15 @@ def set_elements_at_address(
     el_or_els: Union[List[RouteLitElement], RouteLitElement] = new_elements
     for idx in address:
         if isinstance(el_or_els, list):
+            if idx < 0 or idx >= len(el_or_els):
+                # If the address is invalid, return the original elements unchanged
+                # This can happen when the UI structure has changed and the stored address is no longer valid
+                return elements
             el_or_els = el_or_els[idx]
         elif isinstance(el_or_els, RouteLitElement) and el_or_els.children is not None:
+            if idx < 0 or idx >= len(el_or_els.children):
+                # If the address is invalid, return the original elements unchanged
+                return elements
             el_or_els = el_or_els.children[idx]
         else:
             raise ValueError(f"Cannot set object at address {address} from object of type {type(elements)}")
@@ -171,3 +200,7 @@ def set_elements_at_address(
 
     el_or_els.children = value
     return new_elements
+
+
+def build_view_task_key(view_fn: ViewFn, fragment_id: Optional[str], session_keys: SessionKeys) -> str:
+    return f"{session_keys.view_tasks_key}-{view_fn.__name__}#{fragment_id or 'app'}"

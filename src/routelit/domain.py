@@ -2,17 +2,21 @@ import json
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
 from typing import (
+    TYPE_CHECKING,
     Any,
+    AsyncGenerator,
+    Awaitable,
+    Callable,
+    ClassVar,
     Dict,
-    Iterator,
     List,
     Literal,
     Mapping,
     MutableMapping,
     NamedTuple,
     Optional,
-    Tuple,
     TypedDict,
+    Union,
 )
 from urllib.parse import urlparse
 
@@ -21,11 +25,18 @@ COOKIE_SESSION_KEY = "ROUTELIT_SESSION_ID"
 The key of the session id in the cookie.
 """
 
-RerunType = Literal["auto", "app"]
+BuilderTarget = Literal["app", "fragment"]
+RerunType = Literal["auto", "app", "fragment"]
 """
   "auto" will rerun the fragment if it is called from a fragment otherwise it will rerun the app.
   "app" will rerun the app.
 """
+
+
+if TYPE_CHECKING:
+    from .builder import RouteLitBuilder
+
+ViewFn = Callable[["RouteLitBuilder"], Union[None, Awaitable[None]]]
 
 
 class RouteLitEvent(TypedDict):
@@ -56,6 +67,10 @@ class SessionKeys(NamedTuple):
     """
       Key to the parameters of the fragments in the session state.
     """
+    view_tasks_key: str
+    """
+      Key to the view tasks in the session state.
+    """
 
 
 @dataclass
@@ -64,20 +79,60 @@ class RouteLitElement:
     The element to be rendered by the RouteLit app.
     """
 
+    ROOT_ELEMENT_KEY: ClassVar[str] = "root"
+
     name: str
     props: Dict[str, Any]
     key: str
     children: Optional[List["RouteLitElement"]] = None
     address: Optional[List[int]] = None
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "props": self.props,
+            "key": self.key,
+            "address": self.address,
+        }
+
+    @staticmethod
+    def create_root_element() -> "RouteLitElement":
+        return RouteLitElement(
+            name=RouteLitElement.ROOT_ELEMENT_KEY,
+            props={},
+            key="",
+            children=[],
+            address=None,
+        )
+
+    def append_child(self, child: "RouteLitElement") -> None:
+        if self.children is None:
+            self.children = []
+        self.children.append(child)
+
+    def get_children(self) -> List["RouteLitElement"]:
+        if self.children is None:
+            self.children = []
+        return self.children
+
 
 @dataclass
 class Action:
-    address: List[int]
+    address: Optional[List[int]]
     """
       (List[int]) The address is the list of indices to the array tree of elements in the session state
       from the root to the target element.
     """
+    target: Optional[Literal["app", "fragment"]]
+    """
+      (Literal["app", "fragment"]) The target is the target of the action.
+      If None, the action is applied to the app.
+    """
+
+
+@dataclass
+class RerunAction(Action):
+    type: Literal["rerun"] = "rerun"
 
 
 @dataclass
@@ -110,6 +165,67 @@ class UpdateAction(Action):
     props: Dict[str, Any]
     key: str
     type: Literal["update"] = "update"
+
+
+@dataclass
+class FreshBoundaryAction(Action):
+    """
+    The action to mark the fresh boundary of the app or fragment.
+    It means all elements after this action should be stale.
+    This action should be used when streaming, should be just before the first action.
+    """
+
+    type: Literal["fresh_boundary"] = "fresh_boundary"
+
+
+@dataclass
+class ViewTaskDoneAction(Action):
+    """
+    The action to mark that the task is done.
+    """
+
+    type: Literal["task_done"] = "task_done"
+
+
+@dataclass
+class LastAction(Action):
+    """
+    The action to mark that no more actions will be yielded after this action.
+    """
+
+    type: Literal["last"] = "last"
+
+
+@dataclass
+class SetAction(Action):
+    """
+    The action to set an element.
+    """
+
+    element: Dict[str, Any]
+    key: str
+    type: Literal["set"] = "set"
+
+
+@dataclass
+class NoChangeAction(Action):
+    """
+    The action to mark that no change will be made.
+    """
+
+    type: Literal["no_change"] = "no_change"
+
+
+# Type aliases for async generators
+RouteLitElementGenerator = AsyncGenerator[RouteLitElement, None]
+"""
+Async generator type for RouteLitElement instances.
+"""
+
+ActionGenerator = AsyncGenerator[Action, None]
+"""
+Async generator type for Action instances.
+"""
 
 
 @dataclass
@@ -217,14 +333,6 @@ class RouteLitRequest(ABC):
                     return url.netloc + url.path
         return self.get_host() + self.get_pathname()
 
-    def get_ui_session_keys(self, use_referer: bool = False) -> Tuple[str, str]:
-        session_id = self.get_session_id()
-        host_pathname = self.get_host_pathname(use_referer)
-        # fragment_id = self.get_fragment_id()
-        ui_session_key = f"{session_id}:{host_pathname}"
-        session_state_key = f"{session_id}:{host_pathname}:state"
-        return ui_session_key, session_state_key
-
     def get_session_keys(self, use_referer: bool = False) -> SessionKeys:
         session_id = self.get_session_id()
         host_pathname = self.get_host_pathname(use_referer)
@@ -232,11 +340,13 @@ class RouteLitRequest(ABC):
         session_state_key = f"{session_id}:{host_pathname}:state"
         fragment_addresses_key = f"{ui_session_key}:fragments"
         fragment_params_key = f"{ui_session_key}:fragment_params"
+        view_tasks_key = f"{ui_session_key}:view_tasks"
         return SessionKeys(
             ui_session_key,
             session_state_key,
             fragment_addresses_key,
             fragment_params_key,
+            view_tasks_key,
         )
 
 
@@ -268,73 +378,7 @@ class RouteLitResponse:
 
 
 class BuilderTranstionParams(NamedTuple):
-    prev_elements: List[RouteLitElement]
-    maybe_prev_fragment_elements: Optional[List[RouteLitElement]]
-    prev_session_state: MutableMapping[str, Any]
-    prev_fragments: MutableMapping[str, List[int]]
-
-
-class PropertyDict:
-    """
-    A dictionary that can be accessed as attributes.
-    Example:
-    ```python
-    session_state = PropertyDict({"name": "John"})
-    print(session_state.name)  # "John"
-    print(session_state["name"])  # "John"
-    session_state.name = "Jane"
-    print(session_state.name)  # "Jane"
-    print(session_state["name"])  # "Jane"
-    del session_state.name
-    print(session_state.name)  # None
-    print(session_state["name"])  # None
-    ```
-    """
-
-    def __init__(self, initial_dict: Optional[MutableMapping[str, Any]] = None):
-        self._data = initial_dict or {}
-
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self._data[name]
-        except KeyError:
-            return None
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        if name.startswith("_"):
-            super().__setattr__(name, value)
-        else:
-            self._data[name] = value
-
-    def __repr__(self) -> str:
-        return f"PropertyDict({self._data!r})"
-
-    def __str__(self) -> str:
-        return str(self._data)
-
-    def __getitem__(self, key: str) -> Any:
-        return self._data[key]
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        self._data[key] = value
-
-    def __delitem__(self, key: str) -> None:
-        del self._data[key]
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._data)
-
-    def __len__(self) -> int:
-        return len(self._data)
-
-    def __contains__(self, key: str) -> bool:
-        return key in self._data
-
-    def pop(self, key: str, *args: Any) -> Any:
-        return self._data.pop(key, *args)
-
-    def get(self, key: str, default: Any = None) -> Any:
-        return self._data.get(key, default)
-
-    def get_data(self) -> MutableMapping[str, Any]:
-        return self._data
+    elements: List[RouteLitElement]
+    maybe_fragment_elements: Optional[List[RouteLitElement]]
+    session_state: MutableMapping[str, Any]
+    fragments: MutableMapping[str, List[int]]

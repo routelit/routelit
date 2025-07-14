@@ -28,3 +28,11 @@ class EmptyReturnException(Exception):
     """
 
     pass
+
+
+class StopException(Exception):
+    """
+    Exception raised to stop the execution of the view function.
+    """
+
+    pass

@@ -1,16 +1,18 @@
 import asyncio
+import contextlib
 import contextvars
 import functools
+import json
 import time
 from collections.abc import MutableMapping
 from contextlib import contextmanager
-from copy import deepcopy
 from dataclasses import asdict
 from typing import (
     Any,
     AsyncGenerator,
     Awaitable,
     Callable,
+    Coroutine,
     Dict,
     Generator,
     Generic,
@@ -27,25 +29,32 @@ from typing import (
 from .assets_utils import get_vite_components_assets
 from .builder import RouteLitBuilder
 from .domain import (
+    Action,
+    ActionGenerator,
     ActionsResponse,
     BuilderTranstionParams,
     Head,
-    PropertyDict,
+    LastAction,
+    RerunAction,
     RouteLitElement,
     RouteLitRequest,
     RouteLitResponse,
     SessionKeys,
+    SetAction,
+    ViewFn,
+    ViewTaskDoneAction,
     ViteComponentsAssets,
 )
-from .exceptions import EmptyReturnException, RerunException
+from .exceptions import EmptyReturnException, RerunException, StopException
 from .utils.async_to_sync_gen import async_to_sync_generator
 from .utils.misc import (
+    build_view_task_key,
     compare_elements,
     get_elements_at_address,
     set_elements_at_address,
 )
+from .utils.property_dict import PropertyDict
 
-ViewFn = Callable[[RouteLitBuilder], Union[None, Awaitable[None]]]
 BuilderType = TypeVar("BuilderType", bound=RouteLitBuilder)
 
 
@@ -70,7 +79,7 @@ class RouteLit(Generic[BuilderType]):
         BuilderClass: Type[BuilderType] = RouteLitBuilder,  # type: ignore[assignment]
         session_storage: Optional[MutableMapping[str, Any]] = None,
         inject_builder: bool = True,
-        debounce_ms: int = 1000,
+        request_timeout: float = 60.0,  # timeout for the request to complete in seconds
     ):
         self.BuilderClass = BuilderClass
         self.session_storage = session_storage or {}
@@ -79,7 +88,8 @@ class RouteLit(Generic[BuilderType]):
             "session_builder"
         )
         self.inject_builder = inject_builder
-        self.debounce_ms = debounce_ms
+        self.request_timeout = request_timeout
+        self.cancel_events: Dict[str, asyncio.Event] = {}
 
     @contextmanager
     def _set_builder_context(self, builder: BuilderType) -> Generator[BuilderType, None, None]:
@@ -88,7 +98,6 @@ class RouteLit(Generic[BuilderType]):
             yield builder
         finally:
             self._session_builder_context.reset(token)
-        builder.on_end()
 
     @property
     def ui(self) -> BuilderType:
@@ -150,7 +159,7 @@ class RouteLit(Generic[BuilderType]):
         ```
         """
         if request.method == "GET":
-            return self.handle_get_request(request, **kwargs)
+            return self.handle_get_request(view_fn, request, **kwargs)
         elif request.method == "POST":
             return self.handle_post_request(view_fn, request, inject_builder, *args, **kwargs)
         else:
@@ -159,6 +168,7 @@ class RouteLit(Generic[BuilderType]):
 
     def handle_get_request(
         self,
+        view_fn: ViewFn,
         request: RouteLitRequest,
         **kwargs: Any,
     ) -> RouteLitResponse:
@@ -181,7 +191,18 @@ class RouteLit(Generic[BuilderType]):
             RouteLitResponse: The response object.
         """
         session_keys = request.get_session_keys()
-        ui_key, state_key, fragment_addresses_key, fragment_params_key = session_keys
+        (
+            ui_key,
+            state_key,
+            fragment_addresses_key,
+            fragment_params_key,
+            view_tasks_key,
+        ) = session_keys
+        view_tasks_key = build_view_task_key(view_fn, request.fragment_id, session_keys)
+        if view_tasks_key in self.cancel_events:
+            # send cancel event to the view task beforehand
+            self.cancel_events[view_tasks_key].set()
+
         if state_key in self.session_storage:
             self.session_storage.pop(ui_key, None)
             self.session_storage.pop(state_key, None)
@@ -219,10 +240,27 @@ class RouteLit(Generic[BuilderType]):
         else:
             new_elements = elements
 
-        ui_key, state_key, fragment_addresses_key, _ = session_keys
+        ui_key, state_key, fragment_addresses_key, _, _vt = session_keys
         self.session_storage[ui_key] = new_elements
         self.session_storage[state_key] = session_state
         self.session_storage[fragment_addresses_key] = {**prev_fragments, **fragments}
+
+    def __write_session_state(
+        self,
+        session_keys: SessionKeys,
+        transition_params: BuilderTranstionParams,
+        builder: RouteLitBuilder,
+        fragment_id: Optional[str],
+    ) -> None:
+        self._write_session_state(
+            session_keys=session_keys,
+            prev_elements=transition_params.elements,
+            prev_fragments=transition_params.fragments,
+            elements=builder.get_elements(),
+            session_state=builder.session_state.get_data(),
+            fragments=builder.get_fragments(),
+            fragment_id=fragment_id,
+        )
 
     def _get_prev_elements_at_fragment(
         self, session_keys: SessionKeys, fragment_id: Optional[str]
@@ -237,7 +275,7 @@ class RouteLit(Generic[BuilderType]):
             return prev_elements, fragment_elements
         return prev_elements, None
 
-    def _check_if_form_event(self, request: RouteLitRequest, session_keys: SessionKeys) -> None:
+    def _handle_if_form_event(self, request: RouteLitRequest, session_keys: SessionKeys) -> bool:
         event = request.ui_event
         if event and event.get("type") != "submit" and (form_id := event.get("formId")):
             session_state = self.session_storage.get(session_keys.state_key, {})
@@ -247,6 +285,11 @@ class RouteLit(Generic[BuilderType]):
                 **session_state,
                 f"__events4later_{form_id}": events,
             }
+            return True
+        return False
+
+    def _check_if_form_event(self, request: RouteLitRequest, session_keys: SessionKeys) -> None:
+        if self._handle_if_form_event(request, session_keys):
             raise EmptyReturnException()
 
     def _handle_build_params(self, request: RouteLitRequest, session_keys: SessionKeys) -> BuilderTranstionParams:
@@ -260,24 +303,21 @@ class RouteLit(Generic[BuilderType]):
         prev_session_state = self.session_storage.get(prev_session_keys.state_key, {})
         prev_fragments = self.session_storage.get(prev_session_keys.fragment_addresses_key, {})
         return BuilderTranstionParams(
-            prev_elements=prev_elements,
-            maybe_prev_fragment_elements=maybe_prev_fragment_elements,
-            prev_session_state=prev_session_state,
-            prev_fragments=prev_fragments,
+            elements=prev_elements,
+            maybe_fragment_elements=maybe_prev_fragment_elements,
+            session_state=prev_session_state,
+            fragments=prev_fragments,
         )
 
     @staticmethod
     def _build_post_response(
-        # transition_params: BuilderTranstionParams,
         prev_elements: List[RouteLitElement],
         elements: List[RouteLitElement],
         fragment_id: Optional[str],
-    ) -> Dict[str, Any]:
-        # real_prev_elements = transition_params.maybe_prev_fragment_elements or transition_params.prev_elements
-        actions = compare_elements(prev_elements, elements)
+    ) -> ActionsResponse:
         target: Literal["app", "fragment"] = "app" if fragment_id is None else "fragment"
-        action_response = ActionsResponse(actions=actions, target=target)
-        return asdict(action_response)
+        actions = compare_elements(prev_elements, elements, target=target)
+        return ActionsResponse(actions=actions, target=target)
 
     def _handle_builder_view_end(
         self,
@@ -285,37 +325,19 @@ class RouteLit(Generic[BuilderType]):
         session_keys: SessionKeys,
         transition_params: BuilderTranstionParams,
         fragment_id: Optional[str],
-    ) -> Dict[str, Any]:
+    ) -> ActionsResponse:
         elements = builder.get_elements()
         self._write_session_state(
             session_keys=session_keys,
-            prev_elements=transition_params.prev_elements,
-            prev_fragments=transition_params.prev_fragments,
+            prev_elements=transition_params.elements,
+            prev_fragments=transition_params.fragments,
             elements=elements,
             session_state=builder.session_state.get_data(),
             fragments=builder.get_fragments(),
             fragment_id=fragment_id,
         )
-        real_prev_elements = transition_params.maybe_prev_fragment_elements or transition_params.prev_elements
+        real_prev_elements = transition_params.maybe_fragment_elements or transition_params.elements
         return self._build_post_response(real_prev_elements, elements, fragment_id)
-
-    def _handle_builder_view_end_with_transition_params(
-        self,
-        builder: RouteLitBuilder,
-        session_keys: SessionKeys,
-        transition_params: BuilderTranstionParams,
-        fragment_id: Optional[str],
-    ) -> Tuple[Dict[str, Any], BuilderTranstionParams]:
-        resp = self._handle_builder_view_end(builder, session_keys, transition_params, fragment_id)
-        elements = deepcopy(builder.get_elements())
-        fragments = builder.get_fragments()
-        new_transition_params = BuilderTranstionParams(
-            prev_elements=elements,
-            maybe_prev_fragment_elements=elements,
-            prev_session_state=builder.session_state.get_data(),
-            prev_fragments=deepcopy(fragments),
-        )
-        return resp, new_transition_params
 
     def handle_post_request(
         self,
@@ -336,14 +358,16 @@ class RouteLit(Generic[BuilderType]):
             transition_params = self._handle_build_params(request, session_keys)
             builder = self.BuilderClass(
                 request,
-                session_state=PropertyDict(transition_params.prev_session_state),
-                fragments=transition_params.prev_fragments,
+                session_state=PropertyDict(transition_params.session_state),
+                fragments=transition_params.fragments,
                 initial_fragment_id=fragment_id,
             )
             new_args = (builder, *args) if inject_builder else args
             with self._set_builder_context(builder):
                 view_fn(*new_args, **kwargs)
-            return self._handle_builder_view_end(builder, session_keys, transition_params, fragment_id)
+            builder.on_end()
+            resp = self._handle_builder_view_end(builder, session_keys, transition_params, fragment_id)
+            return asdict(resp)
         except RerunException as e:
             self.session_storage[session_keys.state_key] = e.state
             actual_view_fn = app_view_fn if e.scope == "app" else view_fn
@@ -359,46 +383,137 @@ class RouteLit(Generic[BuilderType]):
         inject_builder: Optional[bool] = None,
         *args: Any,
         **kwargs: Any,
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> ActionGenerator:
         inject_builder = self.inject_builder if inject_builder is None else inject_builder
         app_view_fn = view_fn
         session_keys = request.get_session_keys()
-        try:
-            self._check_if_form_event(request, session_keys)
-            fragment_id = request.fragment_id
-            if fragment_id and fragment_id in self.fragment_registry:
-                view_fn = self.fragment_registry[fragment_id]
-            transition_params = self._handle_build_params(request, session_keys)
+        if self._handle_if_form_event(request, session_keys):
+            return  # no action needed
+        fragment_id = request.fragment_id
+        view_tasks_key = build_view_task_key(view_fn, fragment_id, session_keys)
+        if view_tasks_key in self.cancel_events:
+            self.cancel_events[view_tasks_key].set()
+            self.cancel_events.pop(view_tasks_key, None)
+
+        if fragment_id and fragment_id in self.fragment_registry:
+            view_fn = self.fragment_registry[fragment_id]
+        transition_params = self._handle_build_params(request, session_keys)
+
+        loop = asyncio.get_running_loop()
+
+        async def run_view_process(
+            local_view_fn: ViewFn,
+            transition_params: BuilderTranstionParams,
+            local_fragment_id: Optional[str],
+        ) -> ActionGenerator:
+            event_queue: asyncio.Queue[Action] = asyncio.Queue()
+            cancel_event = asyncio.Event()
+            self.cancel_events[view_tasks_key] = cancel_event
             builder = self.BuilderClass(
                 request,
-                session_state=PropertyDict(transition_params.prev_session_state),
-                fragments=transition_params.prev_fragments,
-                initial_fragment_id=fragment_id,
-                event_queue=asyncio.Queue(),
-                loop=asyncio.get_running_loop(),
+                session_state=PropertyDict(transition_params.session_state, cancel_event=cancel_event),
+                fragments=transition_params.fragments,
+                initial_fragment_id=local_fragment_id,
+                prev_elements=transition_params.maybe_fragment_elements or transition_params.elements,
+                event_queue=event_queue,
+                loop=loop,
+                cancel_event=cancel_event,
             )
-            gen = self._generate_view_sumarized_chunks_async(
-                view_fn,
-                builder,
-                session_keys,
-                transition_params,
-                fragment_id,
-                inject_builder,
-                args,
-                kwargs,
-            )
-            async for item in gen:
-                yield item
-        except RerunException as e:
-            self.session_storage[session_keys.state_key] = e.state
-            actual_view_fn = app_view_fn if e.scope == "app" else view_fn
-            async for item in self.handle_post_request_async_stream(
-                actual_view_fn, request, inject_builder, *args, **kwargs
-            ):
-                yield item
-        except EmptyReturnException:
-            # No need to return anything
-            yield asdict(ActionsResponse(actions=[], target="app"))
+            run_view_async = self._build_run_view_async(local_view_fn, builder, inject_builder, args, kwargs)
+            view_task = asyncio.create_task(run_view_async(), name="rl_view_fn")
+            start_time = time.monotonic()
+
+            try:
+                view_task.add_done_callback(lambda _: builder.handle_view_task_done())
+                while True:
+                    try:
+                        self._check_if_view_task_failed(view_task)
+                        if time.monotonic() - start_time > self.request_timeout:
+                            raise StopException("View task timeout")
+                        if cancel_event.is_set():
+                            await self._cancel_view_task(view_task, timeout=0.5)
+                            break
+                        if view_task.cancelled():
+                            break
+                        action = await asyncio.wait_for(event_queue.get(), timeout=0.5)
+                        if isinstance(action, ViewTaskDoneAction):
+                            builder.on_end()
+                            continue
+                        if isinstance(action, RerunAction):
+                            raise RerunException(builder.session_state.get_data(), scope=action.target or "app")
+                        yield action
+                        if isinstance(action, SetAction):
+                            self.__write_session_state(session_keys, transition_params, builder, local_fragment_id)
+                        event_queue.task_done()
+                        if isinstance(action, LastAction):
+                            break
+                    except asyncio.TimeoutError:
+                        # ignore on purpose small timeout from event_queue.get()
+                        pass
+                builder.on_end()
+                self.__write_session_state(session_keys, transition_params, builder, local_fragment_id)
+            except StopException:
+                pass  # expected
+            except asyncio.CancelledError:
+                pass  # expected
+            except EmptyReturnException:
+                # No need to return anything
+                pass
+            except RerunException as e:
+                (maybe_fragment_elements, actual_view_fn, new_fragment_id) = (
+                    (None, app_view_fn, None)
+                    if e.scope == "app"
+                    else (
+                        transition_params.maybe_fragment_elements,
+                        local_view_fn,
+                        local_fragment_id,
+                    )
+                )
+
+                _transition_params = BuilderTranstionParams(
+                    elements=transition_params.elements,
+                    maybe_fragment_elements=maybe_fragment_elements,
+                    session_state=e.state,
+                    fragments=builder.get_fragments(),
+                )
+                cancel_event.set()
+                await self._cancel_view_task(view_task, timeout=0.5)
+                async for action in run_view_process(
+                    actual_view_fn,
+                    _transition_params,
+                    new_fragment_id,
+                ):
+                    yield action
+            finally:
+                await self._cancel_view_task(view_task)
+                self.cancel_events.pop(view_tasks_key, None)
+
+        async for action in run_view_process(view_fn, transition_params, fragment_id):
+            yield action
+
+    async def handle_post_request_async_stream_jsonl(
+        self,
+        view_fn: ViewFn,
+        request: RouteLitRequest,
+        inject_builder: Optional[bool] = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> AsyncGenerator[str, None]:
+        async_gen = self.handle_post_request_async_stream(view_fn, request, inject_builder, *args, **kwargs)
+        async for action in async_gen:
+            yield json.dumps(asdict(action)) + "\n"
+
+    def handle_post_request_stream_jsonl(
+        self,
+        view_fn: ViewFn,
+        request: RouteLitRequest,
+        inject_builder: Optional[bool] = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Generator[str, None, None]:
+        async_gen = self.handle_post_request_async_stream(view_fn, request, inject_builder, *args, **kwargs)
+        for action in async_to_sync_generator(async_gen):
+            yield json.dumps(asdict(action)) + "\n"
 
     def handle_post_request_stream(
         self,
@@ -407,7 +522,7 @@ class RouteLit(Generic[BuilderType]):
         inject_builder: Optional[bool] = None,
         *args: Any,
         **kwargs: Any,
-    ) -> Generator[Dict[str, Any], None, None]:
+    ) -> Generator[Action, None, None]:
         async_gen = self.handle_post_request_async_stream(view_fn, request, inject_builder, *args, **kwargs)
         yield from async_to_sync_generator(async_gen)
 
@@ -574,158 +689,28 @@ class RouteLit(Generic[BuilderType]):
         inject_builder: bool,
         args: Tuple[Any, ...],
         kwargs: Dict[Any, Any],
-    ) -> Awaitable[None]:
-        async def run_view_async():
-            try:
-                new_args = (builder, *args) if inject_builder else args
-                with self._set_builder_context(builder):
-                    if asyncio.iscoroutinefunction(view_fn):
-                        await view_fn(*new_args, **kwargs)
-                    else:
-                        await asyncio.to_thread(view_fn, *new_args, **kwargs)
-            finally:
-                print("view_task finally")
-                # Always signal completion
-                await builder.event_queue.put("COMPLETED")
+    ) -> Callable[[], Coroutine[Any, Any, None]]:
+        async def run_view_async() -> None:
+            new_args = (builder, *args) if inject_builder else args
+            with self._set_builder_context(builder):
+                coro = (
+                    view_fn(*new_args, **kwargs)
+                    if asyncio.iscoroutinefunction(view_fn)
+                    else asyncio.to_thread(view_fn, *new_args, **kwargs)
+                )
+                await coro
 
         return run_view_async
 
-    def _check_if_rl_view_task_failed(self, view_task: asyncio.Task, builder: Optional[BuilderType] = None) -> None:
+    @staticmethod
+    def _check_if_view_task_failed(view_task: asyncio.Task) -> None:
         if view_task.done() and view_task.exception() is not None:
             exception = view_task.exception()
-            if isinstance(exception, (RerunException, EmptyReturnException)):
-                if builder:
-                    builder.event_queue.task_done()
-                raise exception
+            raise exception  # type: ignore[misc]
 
-    async def _generate_view_sumarized_chunks_async(
-        self,
-        view_fn: Callable[[RouteLitBuilder], None | Awaitable[None]],
-        builder: BuilderType,
-        session_keys: SessionKeys,
-        transition_params: BuilderTranstionParams,
-        fragment_id: Optional[str],
-        inject_builder: bool,
-        args: Tuple[Any, ...],
-        kwargs: Dict[str, Any],
-    ) -> AsyncGenerator[dict[str, Any], None]:
-        """
-        this function should be aware of the view_fn and the builder via the builder.add_data method.
-        it should generate a summarized chuck each time after the debounce time while the view_fn is running.
-        """
-
-        # Start view_fn as an async task
-        run_view_async = self._build_run_view_async(view_fn, builder, inject_builder, args, kwargs)
-
-        # maybe set the context variable here
-        view_task = asyncio.create_task(run_view_async(), name="rl_view_fn")
-
-        try:
-            last_transition_params = transition_params
-            debounce_seconds = self.debounce_ms / 1000.0
-            last_event_time = None
-
-            while True:
-                try:
-                    # Wait for events with timeout for debounce behavior
-                    # Always use timeout to provide periodic updates even when view task is taking long
-                    timeout = debounce_seconds
-                    event = await asyncio.wait_for(builder.event_queue.get(), timeout=timeout)
-
-                    # Check for completion
-                    if isinstance(event, str) and event == "COMPLETED":
-                        # Check if the task raised an exception and propagate it
-                        self._check_if_rl_view_task_failed(view_task, builder)
-
-                        # Process final batch
-                        actions, new_transition_params = self._handle_builder_view_end_with_transition_params(
-                            builder,
-                            session_keys,
-                            last_transition_params,
-                            fragment_id,
-                        )
-                        print(
-                            "COMPLETED - builder.elements != last_transition_params.prev_elements",
-                            builder.elements != last_transition_params.prev_elements,
-                        )
-                        print(
-                            "- new_elements",
-                            builder.elements,
-                            "\n- old_elements",
-                            last_transition_params.prev_elements,
-                            "\n- actions",
-                            actions,
-                        )
-                        if builder.elements != last_transition_params.prev_elements:
-                            yield actions
-                            last_transition_params = new_transition_params
-                        builder.event_queue.task_done()
-                        break
-
-                    last_event_time = time.time()
-                    builder.event_queue.task_done()
-
-                except asyncio.TimeoutError as e:
-                    print("TimeoutError", e, view_task.done())
-                    # Check if task completed with exception during timeout
-                    self._check_if_rl_view_task_failed(view_task)
-
-                    # Timeout occurred - check for updates only if there was recent activity (debounce behavior)
-                    if last_event_time is not None:
-                        actions, new_transition_params = self._handle_builder_view_end_with_transition_params(
-                            builder,
-                            session_keys,
-                            last_transition_params,
-                            fragment_id,
-                        )
-                        print(
-                            "TIMEOUT - builder.elements != last_transition_params.prev_elements",
-                            builder.elements != last_transition_params.prev_elements,
-                        )
-                        print(
-                            "- new_elements",
-                            builder.elements,
-                            "\n- old_elements",
-                            last_transition_params.prev_elements,
-                            "\n- actions",
-                            actions,
-                        )
-                        if builder.elements != last_transition_params.prev_elements:
-                            yield actions
-                            last_transition_params = new_transition_params
-                        # Reset the event time after processing
-                        last_event_time = None
-
-                except asyncio.CancelledError as e:
-                    print("CancelledError", e)
-                    # Task was cancelled (client disconnected)
-                    break
-
-        except (asyncio.CancelledError, GeneratorExit) as e:
-            print(f"AsyncGenerator cancelled: {e}")
-            # Cancel the task
-            if not view_task.done():
-                view_task.cancel()
-                try:
-                    # Wait for the task to be cancelled with a timeout
-                    await asyncio.wait_for(view_task, timeout=2.0)
-                except (asyncio.TimeoutError, asyncio.CancelledError):
-                    print("View task cancellation timed out or was cancelled")
-                    pass
-            raise
-        except Exception as e:
-            print(f"Error in _generate_view_sumarized_chunks_async: {e}")
-            raise
-        finally:
-            # Always signal cancellation to help the view function exit
-            if not view_task.done():
-                view_task.cancel()
-                try:
-                    # Give the task a chance to clean up
-                    await asyncio.wait_for(view_task, timeout=1.0)
-                except (asyncio.TimeoutError, asyncio.CancelledError):
-                    print("Task cleanup timed out or was cancelled")
-                    pass
-                except Exception as e:
-                    print(f"Cleanup error: {e}")
-                    pass
+    @staticmethod
+    async def _cancel_view_task(view_task: asyncio.Task, timeout: float = 2.0) -> None:
+        if not view_task.done():
+            view_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.wait_for(view_task, timeout=timeout)

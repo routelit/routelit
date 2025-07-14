@@ -51,7 +51,7 @@ def async_to_sync_generator(async_gen: AsyncGenerator[T, None]) -> Generator[T, 
                 try:
                     if async_iterator is not None:
                         # Close the async generator
-                        close_coro = async_iterator.aclose()
+                        close_coro = async_iterator.aclose()  # type: ignore[attr-defined]
                         loop.run_until_complete(close_coro)
                 except Exception as e:
                     print(f"Error during async generator cleanup: {e}")
@@ -61,7 +61,7 @@ def async_to_sync_generator(async_gen: AsyncGenerator[T, None]) -> Generator[T, 
         if async_iterator is not None:
             try:
                 print(f"Exception occurred, cleaning up async generator: {e}")
-                close_coro = async_iterator.aclose()
+                close_coro = async_iterator.aclose()  # type: ignore[attr-defined]
                 if loop is not None:
                     loop.run_until_complete(close_coro)
             except Exception as cleanup_error:
