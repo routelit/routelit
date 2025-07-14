@@ -2849,7 +2849,7 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_build_run_view_async</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
-        <span class="n">view_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">RouteLitBuilder</span><span class="p">],</span> <span class="kc">None</span> <span class="o">|</span> <span class="n">Awaitable</span><span class="p">[</span><span class="kc">None</span><span class="p">]],</span>
+        <span class="n">view_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">RouteLitBuilder</span><span class="p">],</span> <span class="n">Union</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="n">Awaitable</span><span class="p">[</span><span class="kc">None</span><span class="p">]]],</span>
         <span class="n">builder</span><span class="p">:</span> <span class="n">BuilderType</span><span class="p">,</span>
         <span class="n">inject_builder</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
         <span class="n">args</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
