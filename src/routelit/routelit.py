@@ -684,7 +684,7 @@ class RouteLit(Generic[BuilderType]):
 
     def _build_run_view_async(
         self,
-        view_fn: Callable[[RouteLitBuilder], None | Awaitable[None]],
+        view_fn: Callable[[RouteLitBuilder], Union[None, Awaitable[None]]],
         builder: BuilderType,
         inject_builder: bool,
         args: Tuple[Any, ...],
