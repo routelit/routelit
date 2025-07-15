@@ -101,7 +101,7 @@ class RouteLitBuilder:
         self.cancel_event = cancel_event
         self.head: Optional[Head] = None
         self._parent_element = parent_element or RouteLitElement.create_root_element()
-        # self.elements_count = 0
+        self.__root_element = self._parent_element
         self.session_state = session_state
         self.parent_builder = parent_builder
         self.active_child_builder: Optional[RouteLitBuilder] = None
@@ -133,7 +133,7 @@ class RouteLitBuilder:
 
     @property
     def elements(self) -> List[RouteLitElement]:
-        return self._parent_element.get_children()
+        return self.__root_element.get_children()
 
     @property
     def elements_count(self) -> int:
@@ -141,7 +141,7 @@ class RouteLitBuilder:
 
     @property
     def address(self) -> List[int]:
-        return self._parent_element.address or []
+        return self.__root_element.address or []
 
     def _get_next_address(self) -> List[int]:
         if self.active_child_builder:
@@ -283,6 +283,7 @@ class RouteLitBuilder:
                 fresh_boundary_address = address[:-1] + [address[-1] - 1] if len(address) > 0 else []
                 self._schedule_event(FreshBoundaryAction(address=fresh_boundary_address, target=self.initial_target))
 
+            # TODO: check for element equality and send NoChangeAction instead of SetAction
             self._schedule_event(
                 SetAction(
                     element=element.to_dict(),
