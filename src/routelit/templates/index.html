@@ -54,7 +54,7 @@
     {% elif RUN_MODE != "dev_components" %}
       <!-- In production: Load client js from built files -->
       {% for js_asset in default_vite_assets.js_files %}
-        <script src="/routelit/{{ js_asset }}"></script>
+        <script type="module" src="/routelit/{{ js_asset }}"></script>
       {% endfor %}
     {% endif %}
 
@@ -64,7 +64,7 @@
       <!-- In production: Load components js from built files -->
       {% for assets_group in vite_assets %}
         {% for asset in assets_group.js_files %}
-        <script src="/routelit/{{ assets_group.package_name }}/{{ asset }}"></script>
+        <script type="module" src="/routelit/{{ assets_group.package_name }}/{{ asset }}"></script>
         {% endfor %}
       {% endfor %}
     {% endif %}

@@ -254,44 +254,50 @@ class RouteLitBuilder:
         """
         if self.active_child_builder:
             self.active_child_builder._append_element(element)
-        else:
-            if self.cancel_event and self.cancel_event.is_set():
-                raise StopException("Builder cancelled")
+            return
 
-            self._parent_element.append_child(element)
+        if self.cancel_event and self.cancel_event.is_set():
+            raise StopException("Builder cancelled")
 
-            if element.name == "fragment" and element.key != self.initial_fragment_id:
-                element_address = element.address
-                if element_address is not None:
-                    self.fragments[element.key] = element_address
-            # skip sending action for fragment as root
-            if self.initial_target == "fragment" and element.name == "fragment":
-                return
-            # skip the first address for fragment as root
-            address = self._get_last_address()[1:] if self.initial_target == "fragment" else self._get_last_address()
+        self._parent_element.append_child(element)
 
-            if not self.has_prev_diff and self.prev_elements is not None:
-                last_index = address[-1]
-                if last_index < len(self.prev_elements):
-                    prev_element = self.prev_elements[last_index]
-                    if prev_element.key == element.key and prev_element.props == element.props:
-                        self._schedule_event(NoChangeAction(address=address, target=self.initial_target))
-                        return
+        if element.name == "fragment" and element.key != self.initial_fragment_id and element.address is not None:
+            self.fragments[element.key] = element.address
 
-            if not self.has_prev_diff:
-                self.has_prev_diff = True
-                fresh_boundary_address = address[:-1] + [address[-1] - 1] if len(address) > 0 else []
-                self._schedule_event(FreshBoundaryAction(address=fresh_boundary_address, target=self.initial_target))
+        # skip sending action for fragment as root
+        if self.initial_target == "fragment" and element.name == "fragment":
+            return
 
-            # TODO: check for element equality and send NoChangeAction instead of SetAction
-            self._schedule_event(
-                SetAction(
-                    element=element.to_dict(),
-                    key=element.key,
-                    address=address,
-                    target=self.initial_target,
-                )
+        # skip the first address for fragment as root
+        address = self._get_last_address()[1:] if self.initial_target == "fragment" else self._get_last_address()
+
+        if (
+            not self.has_prev_diff
+            and self.prev_elements is not None
+            and (last_index := address[-1])
+            and last_index < len(self.prev_elements)
+            and (prev_element := self.prev_elements[last_index])
+            and prev_element.key == element.key
+            and prev_element.props == element.props
+        ):
+            self._schedule_event(NoChangeAction(address=address, target=self.initial_target))
+            return
+
+        if not self.has_prev_diff:
+            self.has_prev_diff = True
+            # last item minus 1
+            fresh_boundary_address = address[:-1] + [address[-1] - 1] if len(address) > 0 else []
+            self._schedule_event(FreshBoundaryAction(address=fresh_boundary_address, target=self.initial_target))
+
+        # TODO: check for element equality and send NoChangeAction instead of SetAction
+        self._schedule_event(
+            SetAction(
+                element=element.to_dict(),
+                key=element.key,
+                address=address,
+                target=self.initial_target,
             )
+        )
 
     def _add_non_widget(self, element: RouteLitElement) -> RouteLitElement:
         self._append_element(element)
@@ -531,7 +537,7 @@ class RouteLitBuilder:
         self._create_non_widget_element(
             name="title",
             key=key or self._new_text_id("title"),
-            props={"body": body, **kwargs},
+            props={"children": body, **kwargs},
         )
 
     def header(self, body: str, key: Optional[str] = None, **kwargs: Any) -> None:
@@ -550,7 +556,7 @@ class RouteLitBuilder:
         self._create_non_widget_element(
             name="header",
             key=key or self._new_text_id("header"),
-            props={"body": body, **kwargs},
+            props={"children": body, **kwargs},
         )
 
     def subheader(self, body: str, key: Optional[str] = None, **kwargs: Any) -> None:
@@ -569,7 +575,7 @@ class RouteLitBuilder:
         self._create_non_widget_element(
             name="subheader",
             key=key or self._new_text_id("subheader"),
-            props={"body": body, **kwargs},
+            props={"children": body, **kwargs},
         )
 
     def image(self, src: str, *, key: Optional[str] = None, **kwargs: Any) -> None:
@@ -719,8 +725,9 @@ class RouteLitBuilder:
         )
         return self._build_nested_builder(container)
 
-    def button(
+    def _x_button(
         self,
+        element_type: str,
         text: str,
         *,
         event_name: Literal["click", "submit"] = "click",
@@ -728,12 +735,33 @@ class RouteLitBuilder:
         on_click: Optional[Callable[[], None]] = None,
         **kwargs: Any,
     ) -> bool:
+        button = self._create_element(
+            name=element_type,
+            key=key or self._new_widget_id(element_type, text),
+            props={
+                "children": text,
+                "rlEventName": event_name,
+                **kwargs,
+            },
+        )
+        is_clicked, _ = self._get_event_value(button.key, event_name)
+        if is_clicked and on_click:
+            on_click()
+        return is_clicked
+
+    def button(
+        self,
+        text: str,
+        *,
+        key: Optional[str] = None,
+        on_click: Optional[Callable[[], None]] = None,
+        **kwargs: Any,
+    ) -> bool:
         """
-        Creates a button with the given text, event name, key, on click, and keyword arguments.
+        Creates a button with the given text, key, on click, and keyword arguments.
 
         Args:
             text (str): The text of the button.
-            event_name (Optional[Literal["click", "submit"]]): The name of the event to listen for.
             key (Optional[str]): The key of the button.
             on_click (Optional[Callable[[], None]]): The function to call when the button is clicked.
             kwargs (Dict[str, Any]): The keyword arguments to pass to the button.
@@ -748,15 +776,37 @@ class RouteLitBuilder:
             ui.text("Button clicked")
         ```
         """
-        button = self._create_element(
-            name="button",
-            key=key or self._new_widget_id("button", text),
-            props={"text": text, "eventName": event_name, **kwargs},
-        )
-        is_clicked, _ = self._get_event_value(button.key, event_name)
-        if is_clicked and on_click:
-            on_click()
-        return is_clicked
+        return self._x_button("button", text, event_name="click", key=key, on_click=on_click, **kwargs)
+
+    def form_submit_button(
+        self,
+        text: str,
+        *,
+        key: Optional[str] = None,
+        on_click: Optional[Callable[[], None]] = None,
+        **kwargs: Any,
+    ) -> bool:
+        """
+        Creates a form submit button with the given text, key, on click, and keyword arguments.
+
+        Args:
+            text (str): The text of the button.
+            key (Optional[str]): The key of the button.
+            on_click (Optional[Callable[[], None]]): The function to call when the button is clicked.
+            kwargs (Dict[str, Any]): The keyword arguments to pass to the button.
+
+        Returns:
+            bool: Whether the button was clicked.
+
+        Example:
+        ```python
+        with ui.form(key="form_key"):
+            is_submitted = ui.form_submit_button("Submit", on_click=lambda: print("Form submitted"))
+            if is_submitted:
+                ui.text("Form submitted")
+        ```
+        """
+        return self._x_button("button", text, event_name="submit", key=key, on_click=on_click, **kwargs)
 
     def _x_input(
         self,
@@ -766,12 +816,13 @@ class RouteLitBuilder:
         key: Optional[str] = None,
         on_change: Optional[Callable[[Any], None]] = None,
         event_name: str = "change",
-        value_attribute: str = "value",
+        event_value_attr: str = "value",
+        value_attr: str = "defaultValue",
         **kwargs: Any,
     ) -> str:
         component_id = key or self._new_widget_id(element_type, label)
         new_value = self.session_state.get(component_id, value) or ""
-        has_changed, event_value = self._get_event_value(component_id, event_name, value_attribute)
+        has_changed, event_value = self._get_event_value(component_id, event_name, event_value_attr)
         if has_changed:
             new_value = event_value or ""
             self.session_state[component_id] = new_value
@@ -782,7 +833,7 @@ class RouteLitBuilder:
             key=component_id,
             props={
                 "label": label,
-                value_attribute: new_value,
+                value_attr: new_value,
                 **kwargs,
             },
         )
@@ -790,7 +841,7 @@ class RouteLitBuilder:
 
     def _x_radio_select(
         self,
-        element_type: Literal["radio", "select"],
+        element_type: str,
         label: str,
         options: List[Union[Dict[str, Any], str]],
         value: Optional[Any] = None,
@@ -849,6 +900,12 @@ class RouteLitBuilder:
         ```
         """
         return self._x_input("text-input", label, value, key, on_change, type=type, **kwargs)
+
+    def hr(self, key: Optional[str] = None, **kwargs: Any) -> None:
+        """
+        Creates a horizontal rule.
+        """
+        self._create_element(name="hr", key=key or self._new_text_id("hr"), props=kwargs)
 
     def textarea(
         self,
@@ -960,6 +1017,37 @@ class RouteLitBuilder:
         """
         return self._x_radio_select("select", label, options, value, key, on_change, **kwargs)
 
+    def _x_checkbox(
+        self,
+        element_type: str,
+        label: str,
+        *,
+        checked: bool = False,
+        key: Optional[str] = None,
+        on_change: Optional[Callable[[bool], None]] = None,
+        **kwargs: Any,
+    ) -> bool:
+        component_id = key or self._new_widget_id(element_type, label)
+        new_value = self.session_state.get(component_id, checked)
+        if not isinstance(new_value, bool):
+            new_value = bool(new_value) if new_value is not None else checked
+        has_changed, event_value = self._get_event_value(component_id, "change", "checked")
+        if has_changed:
+            new_value = bool(event_value) if event_value is not None else False
+            self.session_state[component_id] = new_value
+            if on_change:
+                on_change(new_value)
+        self._create_element(
+            name=element_type,
+            key=component_id,
+            props={
+                "label": label,
+                "defaultChecked": new_value,
+                **kwargs,
+            },
+        )
+        return bool(new_value)
+
     def checkbox(
         self,
         label: str,
@@ -988,26 +1076,42 @@ class RouteLitBuilder:
         if is_checked:
             ui.text("Checkbox is checked")
         """
-        component_id = key or self._new_widget_id("checkbox", label)
-        new_value = self.session_state.get(component_id, checked)
-        if not isinstance(new_value, bool):
-            new_value = bool(new_value) if new_value is not None else checked
-        has_changed, event_value = self._get_event_value(component_id, "change", "checked")
+        return self._x_checkbox("checkbox", label, checked=checked, key=key, on_change=on_change, **kwargs)
+
+    def _x_checkbox_group(
+        self,
+        element_type: str,
+        label: str,
+        options: List[Union[Dict[str, Any], str]],
+        value: Optional[List[Any]] = None,
+        key: Optional[str] = None,
+        on_change: Optional[Callable[[List[Any]], None]] = None,
+        **kwargs: Any,
+    ) -> List[Any]:
+        component_id = key or self._new_widget_id(element_type, label)
+        new_value = self.session_state.get(component_id, value) or []
+        if not isinstance(new_value, list):
+            new_value = value or []
+        has_changed, event_value = self._get_event_value(component_id, "change", "value")
         if has_changed:
-            new_value = bool(event_value) if event_value is not None else False
+            new_value = event_value if isinstance(event_value, list) else []
             self.session_state[component_id] = new_value
             if on_change:
                 on_change(new_value)
         self._create_element(
-            name="checkbox",
+            name=element_type,
             key=component_id,
             props={
                 "label": label,
-                "checked": new_value,
+                "value": new_value,
+                "options": options,
                 **kwargs,
             },
         )
-        return bool(new_value)
+        # Ensure return type is List[str | int]
+        if isinstance(new_value, list):
+            return new_value
+        return []
 
     def checkbox_group(
         self,
@@ -1040,31 +1144,16 @@ class RouteLitBuilder:
         ui.text(f"Selected options: {', '.join(selected_options) if selected_options else 'None'}")
         ```
         """
-        component_id = key or self._new_widget_id("checkbox-group", label)
-        new_value = self.session_state.get(component_id, value) or []
-        if not isinstance(new_value, list):
-            new_value = value or []
-        has_changed, event_value = self._get_event_value(component_id, "change", "value")
-        if has_changed:
-            new_value = event_value if isinstance(event_value, list) else []
-            self.session_state[component_id] = new_value
-            if on_change:
-                on_change(new_value)
-        self._create_element(
-            name="checkbox-group",
-            key=component_id,
-            props={
-                "label": label,
-                "value": new_value,
-                "options": options,
-                "flexDirection": flex_direction,
-                **kwargs,
-            },
+        return self._x_checkbox_group(
+            "checkbox-group",
+            label,
+            options,
+            value,
+            key,
+            on_change,
+            flexDirection=flex_direction,
+            **kwargs,
         )
-        # Ensure return type is List[str | int]
-        if isinstance(new_value, list):
-            return new_value
-        return []
 
     def rerun(self, scope: RerunType = "auto", clear_event: bool = True) -> None:
         """

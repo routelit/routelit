@@ -1,6 +1,6 @@
 [project]
 name = "routelit"
-version = "0.4.3"
+version = "0.4.4"
 description = "Project to build easy user interfaces, agnostic for http frameworks"
 authors = [{ name = "Rolando Gómez Tabar", email = "rolangom@gmail.com" }]
 readme = "README.md"

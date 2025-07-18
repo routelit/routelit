@@ -24,6 +24,8 @@ def get_vite_components_assets(package_name: str) -> ViteComponentsAssets:
     js_files = []
     css_files = []
     for source in manifest.values():
+        if source.get("isDynamicEntry", False):
+            continue
         filename = source["file"]
         if filename.endswith(".js"):
             js_files.append(filename)
