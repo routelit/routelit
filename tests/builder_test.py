@@ -440,8 +440,7 @@ class TestRouteLitBuilder:
         title_element = builder.elements[0]
         assert title_element.name == "title"
         assert title_element.key == "page-title"
-        assert title_element.props["body"] == "Page Title"
-        assert title_element.props["className"] == "large"
+        assert title_element.props["children"] == "Page Title"
 
     def test_header_creation(self, builder):
         """Test creating a header component."""
@@ -451,7 +450,7 @@ class TestRouteLitBuilder:
         header_element = builder.elements[0]
         assert header_element.name == "header"
         assert header_element.key == "main-header"
-        assert header_element.props["body"] == "Main Header"
+        assert header_element.props["children"] == "Main Header"
 
     def test_subheader_creation(self, builder):
         """Test creating a subheader component."""
@@ -461,7 +460,7 @@ class TestRouteLitBuilder:
         subheader_element = builder.elements[0]
         assert subheader_element.name == "subheader"
         assert subheader_element.key == "section-header"
-        assert subheader_element.props["body"] == "Section Header"
+        assert subheader_element.props["children"] == "Section Header"
 
     def test_image_creation(self, builder):
         """Test creating an image component."""

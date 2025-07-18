@@ -1,4 +1,4 @@
-CLIENT_GIT_TAG=0.4.1
+CLIENT_GIT_TAG=0.4.2
 
 cd src/client
 git fetch --tags
