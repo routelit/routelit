@@ -1,13 +1,14 @@
 [project]
 name = "routelit"
-version = "0.4.4"
+version = "0.4.5"
 description = "Project to build easy user interfaces, agnostic for http frameworks"
 authors = [{ name = "Rolando Gómez Tabar", email = "rolangom@gmail.com" }]
 readme = "README.md"
-keywords = ['python']
+keywords = ['python', "data science", "machine learning", "data analysis", "pandas", "numpy", "streamlit", "shiny", "gradio", "flask", "fastapi"]
 requires-python = ">=3.9,<4.0"
 classifiers = [
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
@@ -16,6 +17,8 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Information Analysis",
 ]
 
 [project.urls]
