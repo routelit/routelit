@@ -1,6 +1,6 @@
 [project]
 name = "routelit"
-version = "0.4.5"
+version = "0.4.6"
 description = "Project to build easy user interfaces, agnostic for http frameworks"
 authors = [{ name = "Rolando Gómez Tabar", email = "rolangom@gmail.com" }]
 readme = "README.md"
@@ -38,6 +38,7 @@ dev = [
     "mkdocs>=1.4.2",
     "mkdocs-material>=8.5.10",
     "mkdocstrings[python]>=0.26.1",
+    "pytest-asyncio>=1.1.0",
 ]
 
 [build-system]

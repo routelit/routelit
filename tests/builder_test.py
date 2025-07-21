@@ -1,103 +1,92 @@
-from typing import Any, List, Mapping, MutableMapping, Optional
+from typing import Any, Optional, Tuple
 
 import pytest
 
 from routelit.builder import RouteLitBuilder
-from routelit.domain import RouteLitElement, RouteLitRequest, SessionKeys
+from routelit.domain import RouteLitElement
 from routelit.exceptions import RerunException
 from routelit.utils.property_dict import PropertyDict
 
 
 # Use the MockRequest from routelit_test or define a similar one here
-class MockRequestBuilder(RouteLitRequest):
-    def __init__(
-        self,
-        method="GET",
-        session_id="test_session",
-        host="example.com",
-        pathname="/",
-        ui_event=None,
-        fragment_id=None,
-    ):
-        self._method = method
-        self._session_id = session_id
-        self._host = host
-        self._pathname = pathname
-        self._ui_event = ui_event
-        self._fragment_id = fragment_id
-        self._headers = {}
-        self._cookies = {}
-        self._query_params = {}
-        self._path_params = {}
+class MockRequest:
+    """Mock request for testing."""
 
-    @property
-    def method(self):
-        return self._method
-
-    @property
-    def ui_event(self):
-        return self._ui_event
-
-    @property
-    def fragment_id(self):
-        return self._fragment_id
-
-    def get_session_keys(self, use_referer=False) -> SessionKeys:
-        base_key = f"{self._session_id}:{self._host}{self._pathname}"
-        return SessionKeys(
-            ui_key=base_key,
-            state_key=f"{base_key}:state",
-            fragment_addresses_key=f"{base_key}:fragments:addresses",
-            fragment_params_key=f"{base_key}:fragments:params",
-            view_tasks_key=f"{base_key}:view_tasks",
-        )
+    def __init__(self, method: str = "GET"):
+        self.method = method
+        self.ui_event = None
+        self.fragment_id = None
+        self.query_params = {}
 
     def clear_event(self):
-        self._ui_event = None
+        self.ui_event = None
 
     def clear_fragment_id(self):
-        self._fragment_id = None
+        self.fragment_id = None
 
-    def get_query_param(self, key):
-        return self._query_params.get(key)
 
-    # --- Implement missing abstract methods ---
-    def get_headers(self) -> MutableMapping[str, str]:
-        return self._headers
+class MyBuilder(RouteLitBuilder):
+    """Custom builder that creates a root-sidebar-main layout structure."""
 
-    def get_path_params(self) -> Optional[Mapping[str, Any]]:
-        return self._path_params
+    def _init_sidebar(self) -> "MyBuilder":
+        new_element = self._create_element(
+            name="container",
+            key="__sidebar__",
+            props={"className": "sidebar"},
+        )
+        return self._build_nested_builder(new_element)  # type: ignore[no-any-return]
 
-    def get_host(self) -> str:
-        return self._host
+    def _init_main(self) -> "MyBuilder":
+        new_element = self._create_element(
+            name="container",
+            key="__main__",
+            props={"className": "main"},
+        )
+        return self._build_nested_builder(new_element)  # type: ignore[no-any-return]
 
-    def get_json(self) -> Any:
-        return None  # Assume no JSON body for mock
+    def _init_root(self) -> "MyBuilder":
+        new_element = self._create_element(
+            name="container",
+            key="__root__",
+            props={"className": "root"},
+        )
+        return self._build_nested_builder(new_element)  # type: ignore[no-any-return]
 
-    def get_pathname(self) -> str:
-        return self._pathname
+    def _on_init(self) -> None:
+        self._config_sidebar()
 
-    def get_query_param_list(self, key) -> List[str]:
-        val = self._query_params.get(key)
-        return [val] if val is not None else []
+    def _config_sidebar(self) -> None:
+        self._root = self._init_root()
+        with self._root:
+            self._sidebar = self._init_sidebar()
+            self._main = self._init_main()
+        self._parent_element = self._main._parent_element  # type: ignore[has-type]
+        self.active_child_builder = self._main
 
-    def get_referrer(self) -> str:
-        # If you need referrer testing, add it to __init__ like in routelit_test.py
-        return self._headers.get("referer", "")
+    def _append_element(self, element: RouteLitElement) -> None:
+        """Override to ensure addresses are set correctly."""
+        if element.address is None:
+            element.address = self._get_next_address()
+        super()._append_element(element)
 
-    def get_session_id(self) -> str:
-        return self._session_id
-
-    def is_json(self) -> bool:
-        return False  # Assume no JSON body for mock
-
-    # --- End of missing methods ---
+    def _get_event_value(self, component_id: str, event_type: str, attribute: Optional[str] = None) -> Tuple[bool, Any]:
+        """Override to handle session state for rerun."""
+        has_event, value = super()._get_event_value(component_id, event_type, attribute)
+        if has_event:
+            # Store the event in session state so it persists through rerun
+            self.session_state[f"__last_event_{component_id}"] = {"type": event_type, "value": value}
+        elif f"__last_event_{component_id}" in self.session_state:
+            # Restore event from session state during rerun
+            event_data = self.session_state[f"__last_event_{component_id}"]
+            if event_data["type"] == event_type:
+                return True, event_data["value"]
+        return has_event, value
 
 
 class TestRouteLitBuilder:
     @pytest.fixture
     def mock_request(self):
-        return MockRequestBuilder()
+        return MockRequest()
 
     @pytest.fixture
     def builder(self, mock_request):
@@ -512,3 +501,211 @@ class TestRouteLitBuilder:
         )
         new_builder._parent_element.children = [element]
         assert new_builder.get_elements() == []
+
+
+class TestCustomBuilder(TestRouteLitBuilder):
+    """Test cases for custom builder with default parent elements."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Setup test fixtures."""
+        self.request = MockRequest()
+        self.session_state = PropertyDict()
+        self.fragments = {}
+
+    def test_custom_builder_initialization(self):
+        """Test that custom builder initializes with correct structure."""
+        builder = MyBuilder(self.request, self.session_state, self.fragments)
+
+        # Verify root structure
+        elements = builder.elements
+        assert len(elements) == 1, "Should have one root element"
+        root = elements[0]
+        assert root.name == "container"
+        assert root.key == "__root__"
+        assert root.props.get("className") == "root"
+
+        # Verify root children
+        root_children = root.get_children()
+        assert len(root_children) == 2, "Root should have sidebar and main"
+        sidebar, main = root_children
+
+        # Verify sidebar
+        assert sidebar.name == "container"
+        assert sidebar.key == "__sidebar__"
+        assert sidebar.props.get("className") == "sidebar"
+
+        # Verify main
+        assert main.name == "container"
+        assert main.key == "__main__"
+        assert main.props.get("className") == "main"
+
+    def test_custom_builder_default_target(self):
+        """Test that elements are added to main by default."""
+        builder = MyBuilder(self.request, self.session_state, self.fragments)
+
+        # Add elements without specifying target
+        builder.text("Test text")
+        builder.button("Test button")
+
+        # Verify elements are in main
+        root = builder.elements[0]
+        main = root.get_children()[1]  # Second child is main
+        main_elements = main.get_children()
+
+        assert len(main_elements) == 2, "Elements should be added to main"
+        assert main_elements[0].props.get("body") == "Test text"
+        assert main_elements[1].props.get("children") == "Test button"
+
+    def test_custom_builder_sidebar_targeting(self):
+        """Test that elements can be added to sidebar explicitly."""
+        builder = MyBuilder(self.request, self.session_state, self.fragments)
+
+        # Add elements to sidebar
+        with builder._sidebar:
+            builder.text("Sidebar text")
+            builder.button("Sidebar button")
+
+        # Add element to main (default)
+        builder.text("Main text")
+
+        # Verify structure
+        root = builder.elements[0]
+        sidebar, main = root.get_children()
+
+        # Check sidebar elements
+        sidebar_elements = sidebar.get_children()
+        assert len(sidebar_elements) == 2, "Should have two elements in sidebar"
+        assert sidebar_elements[0].props.get("body") == "Sidebar text"
+        assert sidebar_elements[1].props.get("children") == "Sidebar button"
+
+        # Check main elements
+        main_elements = main.get_children()
+        assert len(main_elements) == 1, "Should have one element in main"
+        assert main_elements[0].props.get("body") == "Main text"
+
+    def test_custom_builder_nested_elements(self):
+        """Test that nested elements work correctly in custom builder."""
+        builder = MyBuilder(self.request, self.session_state, self.fragments)
+
+        # Create nested structure in sidebar
+        with builder._sidebar:
+            with builder.container(key="sidebar-container"):
+                builder.text("Nested sidebar text")
+                with builder.container(key="deeply-nested"):
+                    builder.button("Deep button")
+
+        # Create nested structure in main
+        with builder.container(key="main-container"):
+            builder.text("Nested main text")
+            with builder.container(key="another-nested"):
+                builder.button("Another button")
+
+        # Verify structure
+        root = builder.elements[0]
+        sidebar, main = root.get_children()
+
+        # Check sidebar nested structure
+        sidebar_container = sidebar.get_children()[0]
+        assert sidebar_container.key == "sidebar-container"
+        assert len(sidebar_container.get_children()) == 2
+        assert sidebar_container.get_children()[0].props.get("body") == "Nested sidebar text"
+
+        deeply_nested = sidebar_container.get_children()[1]
+        assert deeply_nested.key == "deeply-nested"
+        assert deeply_nested.get_children()[0].props.get("children") == "Deep button"
+
+        # Check main nested structure
+        main_container = main.get_children()[0]
+        assert main_container.key == "main-container"
+        assert len(main_container.get_children()) == 2
+        assert main_container.get_children()[0].props.get("body") == "Nested main text"
+
+        another_nested = main_container.get_children()[1]
+        assert another_nested.key == "another-nested"
+        assert another_nested.get_children()[0].props.get("children") == "Another button"
+
+    def test_custom_builder_element_addresses(self):
+        """Test that element addresses are correctly assigned in custom builder."""
+        builder = MyBuilder(self.request, self.session_state, self.fragments)
+
+        # Add elements to both sidebar and main
+        with builder._sidebar:
+            builder.text("Sidebar 1")
+            builder.text("Sidebar 2")
+
+        builder.text("Main 1")
+        builder.text("Main 2")
+
+        # Verify addresses
+        root = builder.elements[0]
+        assert root.address == [0], "Root should have address [0]"
+
+        sidebar, main = root.get_children()
+        assert sidebar.address == [0, 0], "Sidebar should have address [0, 0]"
+        assert main.address == [0, 1], "Main should have address [0, 1]"
+
+        # Check sidebar element addresses
+        sidebar_elements = sidebar.get_children()
+        for i, element in enumerate(sidebar_elements):
+            assert element.address == [0, 0, i], f"Sidebar element {i} address"
+
+        # Check main element addresses
+        main_elements = main.get_children()
+        for i, element in enumerate(main_elements):
+            assert element.address == [0, 1, i], f"Main element {i} address"
+
+    def test_custom_builder_rerun_behavior(self):
+        """Test that rerun works correctly with custom builder structure."""
+        # First run - create initial state
+        builder = MyBuilder(self.request, self.session_state, self.fragments)
+
+        # Add elements and trigger rerun
+        with builder._sidebar:
+            builder.text("Sidebar text")
+            button = builder.button("Rerun")
+            if button:
+                builder.text("After rerun")
+
+        # Add main content
+        builder.text("Main text")
+
+        # Get the button's key before simulating click
+        root = builder.elements[0]
+        sidebar = root.get_children()[0]
+        button_element = sidebar.get_children()[1]
+        button_key = button_element.key
+
+        # Store the current elements in session state
+        self.session_state["__prev_elements"] = builder.elements
+
+        # Simulate button click
+        self.request.ui_event = {"type": "click", "componentId": button_key, "data": True}
+
+        # Second run - with simulated click
+        builder = MyBuilder(self.request, self.session_state, self.fragments)
+        builder.prev_elements = self.session_state.get("__prev_elements")
+
+        # Add elements again (this is how the view function would work)
+        with builder._sidebar:
+            builder.text("Sidebar text")
+            button = builder.button("Rerun")
+            if button:
+                builder.text("After rerun")
+
+        # Add main content
+        builder.text("Main text")
+
+        # Verify structure after rerun
+        root = builder.elements[0]
+        sidebar, main = root.get_children()
+
+        sidebar_elements = sidebar.get_children()
+        assert len(sidebar_elements) == 3, "Should have three elements in sidebar after rerun"
+        assert sidebar_elements[0].props.get("body") == "Sidebar text"
+        assert sidebar_elements[1].props.get("children") == "Rerun"
+        assert sidebar_elements[2].props.get("body") == "After rerun"
+
+        main_elements = main.get_children()
+        assert len(main_elements) == 1, "Should have one element in main"
+        assert main_elements[0].props.get("body") == "Main text"

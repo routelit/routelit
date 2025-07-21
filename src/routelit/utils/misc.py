@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from ..domain import (
     Action,
@@ -204,3 +204,7 @@ def set_elements_at_address(
 
 def build_view_task_key(view_fn: ViewFn, fragment_id: Optional[str], session_keys: SessionKeys) -> str:
     return f"{session_keys.view_tasks_key}-{view_fn.__name__}#{fragment_id or 'app'}"
+
+
+def remove_none_values(d: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: v for k, v in d.items() if v is not None}

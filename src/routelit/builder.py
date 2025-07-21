@@ -30,6 +30,7 @@ from routelit.domain import (
     ViewTaskDoneAction,
 )
 from routelit.exceptions import RerunException, StopException
+from routelit.utils.misc import remove_none_values
 from routelit.utils.property_dict import PropertyDict
 
 VerticalAlignment = Literal["top", "center", "bottom"]
@@ -106,7 +107,7 @@ class RouteLitBuilder:
         self.parent_builder = parent_builder
         self.active_child_builder: Optional[RouteLitBuilder] = None
         self._prev_active_child_builder: Optional[RouteLitBuilder] = None
-        if self._parent_element.name == RouteLitElement.ROOT_ELEMENT_KEY:
+        if self.__root_element.name == RouteLitElement.ROOT_ELEMENT_KEY and initial_fragment_id is None:
             self._on_init()
         self.q_by_name: Dict[str, int] = {}
         self.should_rerun = False
@@ -259,6 +260,7 @@ class RouteLitBuilder:
         if self.cancel_event and self.cancel_event.is_set():
             raise StopException("Builder cancelled")
 
+        element.props = remove_none_values(element.props)
         self._parent_element.append_child(element)
 
         if element.name == "fragment" and element.key != self.initial_fragment_id and element.address is not None:
@@ -274,9 +276,9 @@ class RouteLitBuilder:
         if (
             not self.has_prev_diff
             and self.prev_elements is not None
-            and (last_index := address[-1])
-            and last_index < len(self.prev_elements)
-            and (prev_element := self.prev_elements[last_index])
+            and len(address) > 0
+            and address[-1] < len(self.prev_elements)
+            and (prev_element := self.prev_elements[address[-1]])
             and prev_element.key == element.key
             and prev_element.props == element.props
         ):
@@ -598,13 +600,13 @@ class RouteLitBuilder:
             props={"src": src, **kwargs},
         )
 
-    def expander(self, title: str, *, open: Optional[bool] = None, key: Optional[str] = None) -> "RouteLitBuilder":
+    def expander(self, title: str, *, is_open: Optional[bool] = None, key: Optional[str] = None) -> "RouteLitBuilder":
         """
         Creates an expander component that can be used as both a context manager and a regular function call.
 
         Args:
             title (str): The title of the expander.
-            open (Optional[bool]): Whether the expander is open.
+            is_open (Optional[bool]): Whether the expander is open.
             key (Optional[str]): The key of the expander.
 
         Returns:
@@ -616,7 +618,7 @@ class RouteLitBuilder:
                 with ui.expander("Title"):
                     ui.text("Content")
 
-                with ui.expander("Title", open=True) as exp0:
+                with ui.expander("Title", is_open=True) as exp0:
                     exp0.text("Content")
 
                 # Function call style
@@ -628,7 +630,7 @@ class RouteLitBuilder:
         new_element = self._create_element(
             name="expander",
             key=new_key,
-            props={"title": title, "open": open},
+            props={"title": title, "open": is_open},
         )
         return self._build_nested_builder(new_element)
 
@@ -1075,6 +1077,7 @@ class RouteLitBuilder:
         is_checked = ui.checkbox("Check me", on_change=lambda checked: print(f"Checkbox is {'checked' if checked else 'unchecked'}"))
         if is_checked:
             ui.text("Checkbox is checked")
+        ```
         """
         return self._x_checkbox("checkbox", label, checked=checked, key=key, on_change=on_change, **kwargs)
 
