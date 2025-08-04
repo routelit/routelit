@@ -40,11 +40,10 @@ class PropertyDict:
             return None
 
     def __setattr__(self, name: str, value: Any) -> None:
-        self._maybe_check_cancel()
         if name.startswith("_"):
             super().__setattr__(name, value)
         else:
-            self._data[name] = value
+            self.__setitem__(name, value)
 
     def __repr__(self) -> str:
         return f"PropertyDict({self._data!r})"
@@ -61,7 +60,7 @@ class PropertyDict:
         self._data[key] = value
 
     def __delitem__(self, key: str) -> None:
-        del self._data[key]
+        self.pop(key, None)
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._data)

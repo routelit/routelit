@@ -39,6 +39,12 @@ if TYPE_CHECKING:
 ViewFn = Callable[["RouteLitBuilder"], Union[None, Awaitable[None]]]
 
 
+class RLOption(TypedDict, total=False):
+    label: str
+    value: str
+    disabled: Optional[bool]
+
+
 class RouteLitEvent(TypedDict):
     """
     The event to be executed by the RouteLit app.
@@ -79,13 +85,14 @@ class RouteLitElement:
     The element to be rendered by the RouteLit app.
     """
 
-    ROOT_ELEMENT_KEY: ClassVar[str] = "root"
+    ROOT_ELEMENT_NAME: ClassVar[str] = "RLRoot"
 
     name: str
     props: Dict[str, Any]
     key: str
     children: Optional[List["RouteLitElement"]] = None
     address: Optional[List[int]] = None
+    virtual: Optional[bool] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -93,16 +100,29 @@ class RouteLitElement:
             "props": self.props,
             "key": self.key,
             "address": self.address,
+            "virtual": self.virtual,
         }
+
+    @staticmethod
+    def from_dict(data: Dict[str, Any]) -> "RouteLitElement":
+        return RouteLitElement(
+            name=data["name"],
+            props=data["props"],
+            key=data["key"],
+            children=data.get("children"),
+            address=data.get("address"),
+            virtual=data.get("virtual"),
+        )
 
     @staticmethod
     def create_root_element() -> "RouteLitElement":
         return RouteLitElement(
-            name=RouteLitElement.ROOT_ELEMENT_KEY,
+            name=RouteLitElement.ROOT_ELEMENT_NAME,
             props={},
             key="",
             children=[],
             address=None,
+            virtual=True,
         )
 
     def append_child(self, child: "RouteLitElement") -> None:
@@ -378,7 +398,7 @@ class RouteLitResponse:
 
 
 class BuilderTranstionParams(NamedTuple):
-    elements: List[RouteLitElement]
-    maybe_fragment_elements: Optional[List[RouteLitElement]]
+    root_element: RouteLitElement
+    maybe_fragment_element: Optional[RouteLitElement]
     session_state: MutableMapping[str, Any]
     fragments: MutableMapping[str, List[int]]

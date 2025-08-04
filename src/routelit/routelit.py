@@ -4,6 +4,7 @@ import contextvars
 import functools
 import json
 import time
+import warnings
 from collections.abc import MutableMapping
 from contextlib import contextmanager
 from dataclasses import asdict
@@ -33,6 +34,7 @@ from .domain import (
     ActionGenerator,
     ActionsResponse,
     BuilderTranstionParams,
+    FreshBoundaryAction,
     Head,
     LastAction,
     RerunAction,
@@ -49,9 +51,9 @@ from .exceptions import EmptyReturnException, RerunException, StopException
 from .utils.async_to_sync_gen import async_to_sync_generator
 from .utils.misc import (
     build_view_task_key,
-    compare_elements,
-    get_elements_at_address,
-    set_elements_at_address,
+    compare_single_elements,
+    get_element_at_address,
+    set_element_at_address,
 )
 from .utils.property_dict import PropertyDict
 
@@ -93,11 +95,30 @@ class RouteLit(Generic[BuilderType]):
 
     @contextmanager
     def _set_builder_context(self, builder: BuilderType) -> Generator[BuilderType, None, None]:
+        """
+        Temporarily expose the given builder instance through the
+        `self.ui` property using a ContextVar.
+
+        When this helper is used from multiple concurrent asyncio Tasks
+        (or when the code it wraps spawns background tasks / threads)
+        the logical *Context* in which the token was created can differ
+        from the one in which ``reset`` is executed.  In that case
+        ``ContextVar.reset`` raises ``ValueError`` with the message
+        "Token was created in a different Context".
+
+        This situation is benign for our use-case - the ContextVar has
+        already been cleared for the current logical flow - so we simply
+        suppress the error to prevent it from bubbling up and crashing the
+        request handler.
+        """
+        token = self._session_builder_context.set(builder)
         try:
-            token = self._session_builder_context.set(builder)
             yield builder
         finally:
-            self._session_builder_context.reset(token)
+            # ``reset`` fails if the context has diverged (e.g. different
+            # asyncio.Task or thread).  Silently ignore that situation.
+            with contextlib.suppress(ValueError):
+                self._session_builder_context.reset(token)
 
     @property
     def ui(self) -> BuilderType:
@@ -227,21 +248,21 @@ class RouteLit(Generic[BuilderType]):
         self,
         *,
         session_keys: SessionKeys,
-        prev_elements: List[RouteLitElement],
+        prev_root_element: RouteLitElement,
         prev_fragments: MutableMapping[str, List[int]],
-        elements: List[RouteLitElement],
+        root_element: RouteLitElement,
         session_state: MutableMapping[str, Any],
         fragments: MutableMapping[str, List[int]],
         fragment_id: Optional[str] = None,
     ) -> None:
         if fragment_id and (fragment_address := prev_fragments.get(fragment_id, [])) and len(fragment_address) > 0:
-            fragment_elements = elements
-            new_elements = set_elements_at_address(prev_elements, fragment_address, fragment_elements)
+            fragment_element = root_element
+            new_element = set_element_at_address(prev_root_element, fragment_address, fragment_element)
         else:
-            new_elements = elements
+            new_element = root_element
 
         ui_key, state_key, fragment_addresses_key, _, _vt = session_keys
-        self.session_storage[ui_key] = new_elements
+        self.session_storage[ui_key] = new_element
         self.session_storage[state_key] = session_state
         self.session_storage[fragment_addresses_key] = {**prev_fragments, **fragments}
 
@@ -254,26 +275,28 @@ class RouteLit(Generic[BuilderType]):
     ) -> None:
         self._write_session_state(
             session_keys=session_keys,
-            prev_elements=transition_params.elements,
+            prev_root_element=transition_params.root_element,
             prev_fragments=transition_params.fragments,
-            elements=builder.get_elements(),
+            root_element=builder.root_element,
             session_state=builder.session_state.get_data(),
             fragments=builder.get_fragments(),
             fragment_id=fragment_id,
         )
 
     def _get_prev_elements_at_fragment(
-        self, session_keys: SessionKeys, fragment_id: Optional[str]
-    ) -> Tuple[List[RouteLitElement], Optional[List[RouteLitElement]]]:
+        self,
+        session_keys: SessionKeys,
+        fragment_id: Optional[str],
+    ) -> Tuple[RouteLitElement, Optional[RouteLitElement]]:
         """
         Returns the previous elements of the full page and the previous elements of the fragment if address is provided.
         """
-        prev_elements = self.session_storage.get(session_keys.ui_key, [])
+        prev_root_element = self.session_storage.get(session_keys.ui_key, RouteLitElement.create_root_element())
         if fragment_id:
             fragment_address = self.session_storage.get(session_keys.fragment_addresses_key, {}).get(fragment_id, [])
-            fragment_elements = get_elements_at_address(prev_elements, fragment_address)
-            return prev_elements, fragment_elements
-        return prev_elements, None
+            fragment_element = get_element_at_address(prev_root_element, fragment_address)
+            return prev_root_element, fragment_element
+        return prev_root_element, None
 
     def _handle_if_form_event(self, request: RouteLitRequest, session_keys: SessionKeys) -> bool:
         event = request.ui_event
@@ -295,7 +318,7 @@ class RouteLit(Generic[BuilderType]):
     def _handle_build_params(self, request: RouteLitRequest, session_keys: SessionKeys) -> BuilderTranstionParams:
         self._maybe_clear_session_state(request, session_keys)
         is_navigation_event, prev_session_keys = self._get_prev_keys(request, session_keys)
-        prev_elements, maybe_prev_fragment_elements = self._get_prev_elements_at_fragment(
+        prev_root_element, maybe_prev_fragment_element = self._get_prev_elements_at_fragment(
             prev_session_keys, request.fragment_id
         )
         if is_navigation_event:
@@ -303,20 +326,20 @@ class RouteLit(Generic[BuilderType]):
         prev_session_state = self.session_storage.get(prev_session_keys.state_key, {})
         prev_fragments = self.session_storage.get(prev_session_keys.fragment_addresses_key, {})
         return BuilderTranstionParams(
-            elements=prev_elements,
-            maybe_fragment_elements=maybe_prev_fragment_elements,
+            root_element=prev_root_element,
+            maybe_fragment_element=maybe_prev_fragment_element,
             session_state=prev_session_state,
             fragments=prev_fragments,
         )
 
     @staticmethod
     def _build_post_response(
-        prev_elements: List[RouteLitElement],
-        elements: List[RouteLitElement],
+        prev_root_element: RouteLitElement,
+        root_element: RouteLitElement,
         fragment_id: Optional[str],
     ) -> ActionsResponse:
         target: Literal["app", "fragment"] = "app" if fragment_id is None else "fragment"
-        actions = compare_elements(prev_elements, elements, target=target)
+        actions = compare_single_elements(prev_root_element, root_element, target=target)
         return ActionsResponse(actions=actions, target=target)
 
     def _handle_builder_view_end(
@@ -326,18 +349,17 @@ class RouteLit(Generic[BuilderType]):
         transition_params: BuilderTranstionParams,
         fragment_id: Optional[str],
     ) -> ActionsResponse:
-        elements = builder.get_elements()
         self._write_session_state(
             session_keys=session_keys,
-            prev_elements=transition_params.elements,
+            prev_root_element=transition_params.root_element,
             prev_fragments=transition_params.fragments,
-            elements=elements,
+            root_element=builder.root_element,
             session_state=builder.session_state.get_data(),
             fragments=builder.get_fragments(),
             fragment_id=fragment_id,
         )
-        real_prev_elements = transition_params.maybe_fragment_elements or transition_params.elements
-        return self._build_post_response(real_prev_elements, elements, fragment_id)
+        real_prev_root_element = transition_params.maybe_fragment_element or transition_params.root_element
+        return self._build_post_response(real_prev_root_element, builder.root_element, fragment_id)
 
     def handle_post_request(
         self,
@@ -376,6 +398,40 @@ class RouteLit(Generic[BuilderType]):
             # No need to return anything
             return asdict(ActionsResponse(actions=[], target="app"))
 
+    async def _cancel_and_wait_view_task(self, view_task_key: str) -> None:
+        self.cancel_events[view_task_key].set()
+        start_time = time.monotonic()
+        while view_task_key in self.cancel_events:
+            await asyncio.sleep(0.05)
+        print("🛑✅ cancel_event_gone", time.monotonic() - start_time, view_task_key)
+
+    @staticmethod
+    def _handle_set_action(action: SetAction, prev_root_element: RouteLitElement):
+        new_el = RouteLitElement.from_dict(action.element)
+        target_parent_el = prev_root_element
+        for i in action.address[:-1]:
+            target_parent_el = target_parent_el.children[i]
+            if target_parent_el.children is None:
+                target_parent_el.children = []
+        if target_parent_el.children is None:
+            target_parent_el.children = []
+
+        target_el = (
+            target_parent_el.children[action.address[-1]]
+            if len(target_parent_el.children) > action.address[-1]
+            else None
+        )
+        if target_el is None:
+            target_parent_el.children.append(new_el)
+            return
+
+        if new_el.key == target_el.key:
+            target_el.props = new_el.props
+            target_el.virtual = new_el.virtual
+            # keep same child
+        else:
+            target_parent_el.children[action.address[-1]] = new_el
+
     async def handle_post_request_async_stream(
         self,
         view_fn: ViewFn,
@@ -392,8 +448,9 @@ class RouteLit(Generic[BuilderType]):
         fragment_id = request.fragment_id
         view_tasks_key = build_view_task_key(view_fn, fragment_id, session_keys)
         if view_tasks_key in self.cancel_events:
-            self.cancel_events[view_tasks_key].set()
-            self.cancel_events.pop(view_tasks_key, None)
+            print("🔒 closed view_tasks_key in cancel_events", view_tasks_key)
+            await self._cancel_and_wait_view_task(view_tasks_key)
+            print("🔓 opened view_tasks_key in cancel_events done", view_tasks_key)
 
         if fragment_id and fragment_id in self.fragment_registry:
             view_fn = self.fragment_registry[fragment_id]
@@ -406,45 +463,65 @@ class RouteLit(Generic[BuilderType]):
             transition_params: BuilderTranstionParams,
             local_fragment_id: Optional[str],
         ) -> ActionGenerator:
+            print("🎬 start run_view_process")
             event_queue: asyncio.Queue[Action] = asyncio.Queue()
             cancel_event = asyncio.Event()
             self.cancel_events[view_tasks_key] = cancel_event
+            prev_root_element = transition_params.maybe_fragment_element or transition_params.root_element
             builder = self.BuilderClass(
                 request,
                 session_state=PropertyDict(transition_params.session_state, cancel_event=cancel_event),
                 fragments=transition_params.fragments,
                 initial_fragment_id=local_fragment_id,
-                prev_elements=transition_params.maybe_fragment_elements or transition_params.elements,
+                prev_root_element=prev_root_element,
                 event_queue=event_queue,
                 loop=loop,
                 cancel_event=cancel_event,
+                should_rerun_event=asyncio.Event(),
             )
             run_view_async = self._build_run_view_async(local_view_fn, builder, inject_builder, args, kwargs)
             view_task = asyncio.create_task(run_view_async(), name="rl_view_fn")
-            start_time = time.monotonic()
+            # start_time = time.monotonic()
 
             try:
-                view_task.add_done_callback(lambda _: builder.handle_view_task_done())
+
+                def handle_view_task_done(task: asyncio.Task):
+                    if task.done():
+                        with contextlib.suppress(asyncio.CancelledError, Exception):
+                            _ = task.exception()
+                    builder.handle_view_task_done()
+
+                view_task.add_done_callback(handle_view_task_done)
+                yield FreshBoundaryAction(
+                    address=[-1],
+                    target="app" if local_fragment_id is None else "fragment",
+                )
+                print("🎯 yield FreshBoundaryAction")
                 while True:
                     try:
                         self._check_if_view_task_failed(view_task)
-                        if time.monotonic() - start_time > self.request_timeout:
-                            raise StopException("View task timeout")
+                        # if time.monotonic() - start_time > self.request_timeout:
+                        #     raise StopException("View task timeout")
                         if cancel_event.is_set():
-                            await self._cancel_view_task(view_task, timeout=0.5)
-                            break
-                        if view_task.cancelled():
+                            print("🛑 cancel_event.is_set()")
+                            await view_task  # should raise asyncio.CancelledError
                             break
                         action = await asyncio.wait_for(event_queue.get(), timeout=0.5)
+                        event_queue.task_done()
+                        if isinstance(action, Exception):
+                            raise action
                         if isinstance(action, ViewTaskDoneAction):
                             builder.on_end()
                             continue
                         if isinstance(action, RerunAction):
-                            raise RerunException(builder.session_state.get_data(), scope=action.target or "app")
+                            raise RerunException(
+                                builder.session_state.get_data(),
+                                scope=action.target or "app",
+                            )
                         yield action
+                        print("🎯 action", action)
                         if isinstance(action, SetAction):
-                            self.__write_session_state(session_keys, transition_params, builder, local_fragment_id)
-                        event_queue.task_done()
+                            self._handle_set_action(action, prev_root_element)
                         if isinstance(action, LastAction):
                             break
                     except asyncio.TimeoutError:
@@ -452,32 +529,37 @@ class RouteLit(Generic[BuilderType]):
                         pass
                 builder.on_end()
                 self.__write_session_state(session_keys, transition_params, builder, local_fragment_id)
-            except StopException:
-                pass  # expected
-            except asyncio.CancelledError:
+            except (StopException, asyncio.CancelledError) as e:
+                print("🛑 StopException or CancelledError", e)
+                self.__write_session_state(
+                    session_keys,
+                    transition_params,
+                    builder,
+                    local_fragment_id,
+                )
                 pass  # expected
             except EmptyReturnException:
                 # No need to return anything
                 pass
             except RerunException as e:
-                (maybe_fragment_elements, actual_view_fn, new_fragment_id) = (
+                (maybe_fragment_element, actual_view_fn, new_fragment_id) = (
                     (None, app_view_fn, None)
                     if e.scope == "app"
                     else (
-                        transition_params.maybe_fragment_elements,
+                        transition_params.maybe_fragment_element,
                         local_view_fn,
                         local_fragment_id,
                     )
                 )
 
                 _transition_params = BuilderTranstionParams(
-                    elements=transition_params.elements,
-                    maybe_fragment_elements=maybe_fragment_elements,
+                    root_element=transition_params.root_element,
+                    maybe_fragment_element=maybe_fragment_element,
                     session_state=e.state,
                     fragments=builder.get_fragments(),
                 )
                 cancel_event.set()
-                await self._cancel_view_task(view_task, timeout=0.5)
+                await self._cancel_view_task(view_task)
                 async for action in run_view_process(
                     actual_view_fn,
                     _transition_params,
@@ -485,11 +567,14 @@ class RouteLit(Generic[BuilderType]):
                 ):
                     yield action
             finally:
+                print("🔚 finally")
                 await self._cancel_view_task(view_task)
                 self.cancel_events.pop(view_tasks_key, None)
 
-        async for action in run_view_process(view_fn, transition_params, fragment_id):
-            yield action
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            async for action in run_view_process(view_fn, transition_params, fragment_id):
+                yield action
 
     async def handle_post_request_async_stream_jsonl(
         self,
@@ -513,6 +598,7 @@ class RouteLit(Generic[BuilderType]):
     ) -> Generator[str, None, None]:
         async_gen = self.handle_post_request_async_stream(view_fn, request, inject_builder, *args, **kwargs)
         for action in async_to_sync_generator(async_gen):
+            print(f"🎯 yield in handle_post_request_stream_jsonl {action.type}")
             yield json.dumps(asdict(action)) + "\n"
 
     def handle_post_request_stream(
@@ -630,7 +716,44 @@ class RouteLit(Generic[BuilderType]):
 
         return decorator_fragment
 
-    def dialog(self, key: Optional[str] = None) -> Callable[[ViewFn], ViewFn]:
+    def _x_overlay_decor(
+        self,
+        builder_fn: Callable[[RouteLitBuilder], Callable[[Any, ...], RouteLitBuilder]],
+        overlay_type: str = "dialog",
+    ) -> Callable[[Optional[str], Any], Callable[[ViewFn], ViewFn]]:
+        def overlay_decor(key: Optional[str] = None, **upper_kwargs: Any) -> Callable[[ViewFn], ViewFn]:
+            def decorator_overlay(view_fn: ViewFn) -> ViewFn:
+                fragment_key = key or view_fn.__name__
+                overlay_key = f"{fragment_key}-{overlay_type}"
+                overlay_upper_kwargs = upper_kwargs
+
+                @functools.wraps(view_fn)
+                def wrapper(*args: Any, **kwargs: Any) -> Any:
+                    rl, is_builder_1st_arg, args, kwargs = self._preprocess_fragment_params(fragment_key, args, kwargs)
+
+                    builder_callable = builder_fn(rl)
+                    with (
+                        rl._fragment(fragment_key),
+                        builder_callable(overlay_key, **overlay_upper_kwargs),
+                    ):
+                        res = view_fn(rl, *args, **kwargs) if is_builder_1st_arg else view_fn(*args, **kwargs)
+                        return res
+
+                self._register_fragment(fragment_key, wrapper)
+                return wrapper
+
+            return decorator_overlay
+
+        return overlay_decor
+
+    def _x_dialog_decor(
+        self,
+        builder_fn: Callable[[RouteLitBuilder], Callable[[Any, ...], RouteLitBuilder]],
+    ) -> Callable[[Optional[str], Any], Callable[[ViewFn], ViewFn]]:
+        """Backward compatibility wrapper for _x_overlay_decor with dialog type."""
+        return self._x_overlay_decor(builder_fn, overlay_type="dialog")
+
+    def dialog(self, key: Optional[str] = None, **kwargs: Any) -> Callable[[ViewFn], ViewFn]:
         """Decorator to register a dialog.
 
         Args:
@@ -665,22 +788,57 @@ class RouteLit(Generic[BuilderType]):
         ```
         """
 
-        def decorator_dialog(view_fn: ViewFn) -> ViewFn:
-            fragment_key = key or view_fn.__name__
-            dialog_key = f"{fragment_key}-dialog"
+        def dialog_builder(
+            rl: RouteLitBuilder,
+        ) -> Callable[[Any, ...], RouteLitBuilder]:
+            return rl._dialog
 
-            @functools.wraps(view_fn)
-            def wrapper(*args: Any, **kwargs: Any) -> Any:
-                rl, is_builder_1st_arg, args, kwargs = self._preprocess_fragment_params(fragment_key, args, kwargs)
+        return self._x_dialog_decor(dialog_builder)(key, **kwargs)
 
-                with rl._fragment(fragment_key), rl._dialog(dialog_key):
-                    res = view_fn(rl, *args, **kwargs) if is_builder_1st_arg else view_fn(*args, **kwargs)
-                    return res
+    def create_overlay_decorator(
+        self, overlay_type: str, builder_method_name: Optional[str] = None
+    ) -> Callable[[Optional[str], Any], Callable[[ViewFn], ViewFn]]:
+        """Generic method to create custom overlay decorators.
 
-            self._register_fragment(fragment_key, wrapper)
-            return wrapper
+        Args:
+            overlay_type (str): The type of overlay (e.g., "popup", "sidebar", "sheet", etc.)
+            builder_method_name (Optional[str]): The name of the builder method to use. Defaults to overlay_type or "_dialog"
 
-        return decorator_dialog
+        Returns:
+            A decorator function for the specified overlay type.
+
+        Example:
+        ```python
+        rl = RouteLit()
+
+        # Create a custom overlay decorator
+        popup = rl.create_overlay_decorator("popup", "popup")
+        sheet = rl.create_overlay_decorator("sheet", "drawer")  # Use drawer method for sheet
+
+        @popup()
+        def my_popup(ui: RouteLitBuilder):
+            ui.text("Hello from popup!")
+
+        @sheet()
+        def my_sheet(ui: RouteLitBuilder):
+            ui.text("Hello from sheet!")
+        ```
+        """
+
+        def overlay_decorator(key: Optional[str] = None, **kwargs: Any) -> Callable[[ViewFn], ViewFn]:
+            def overlay_builder(
+                rl: RouteLitBuilder,
+            ) -> Callable[[Any, ...], RouteLitBuilder]:
+                method_name = builder_method_name or overlay_type
+                if hasattr(rl, method_name):
+                    return getattr(rl, method_name)
+                else:
+                    # Fallback to _dialog method
+                    return rl._dialog
+
+            return self._x_overlay_decor(overlay_builder, overlay_type=overlay_type)(key, **kwargs)
+
+        return overlay_decorator
 
     def _build_run_view_async(
         self,
@@ -709,8 +867,13 @@ class RouteLit(Generic[BuilderType]):
             raise exception  # type: ignore[misc]
 
     @staticmethod
-    async def _cancel_view_task(view_task: asyncio.Task, timeout: float = 2.0) -> None:
+    async def _cancel_view_task(
+        view_task: asyncio.Task, timeout: float = 2.0, suppress_cancel_error: bool = True
+    ) -> None:
         if not view_task.done():
             view_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            if suppress_cancel_error:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await asyncio.wait_for(view_task, timeout=timeout)
+            else:
                 await asyncio.wait_for(view_task, timeout=timeout)
