@@ -1,9 +1,11 @@
-from typing import Any, Dict, List, Literal, Optional, Union
+from datetime import date, datetime, time
+from typing import Any, Callable, Dict, List, Literal, Optional, Union, cast
 
 from ..domain import (
     Action,
     AddAction,
     RemoveAction,
+    RLOption,
     RouteLitElement,
     SessionKeys,
     UpdateAction,
@@ -91,14 +93,24 @@ def compare_elements(
                     # Element moved AND props changed - remove and add
                     actions.append(RemoveAction(address=[*address, current_idx], key=key, target=target))
                     actions.append(
-                        AddAction(address=[*address, expected_idx], element=new_elem, key=key, target=target)
+                        AddAction(
+                            address=[*address, expected_idx],
+                            element=new_elem,
+                            key=key,
+                            target=target,
+                        )
                     )
                 else:
                     # Element moved but props unchanged - we could optimize with a special move action
                     # For now, simulate with remove and add
                     actions.append(RemoveAction(address=[*address, current_idx], key=key, target=target))
                     actions.append(
-                        AddAction(address=[*address, expected_idx], element=new_elem, key=key, target=target)
+                        AddAction(
+                            address=[*address, expected_idx],
+                            element=new_elem,
+                            key=key,
+                            target=target,
+                        )
                     )
             else:
                 # Position is correct, check if props need updating
@@ -136,7 +148,14 @@ def compare_elements(
 
             # Add the new element
             new_elem = b_map[key][1]
-            actions.append(AddAction(address=[*address, insert_at], element=new_elem, key=key, target=target))
+            actions.append(
+                AddAction(
+                    address=[*address, insert_at],
+                    element=new_elem,
+                    key=key,
+                    target=target,
+                )
+            )
             current_state.insert(insert_at, key)
 
     # Step 3: Process children recursively
@@ -153,9 +172,58 @@ def compare_elements(
                 new_children = b[new_idx].children or []
 
                 child_actions = compare_elements(
-                    old_children, new_children, target=target, address=[*address, current_idx]
+                    old_children,
+                    new_children,
+                    target=target,
+                    address=[*address, current_idx],
                 )
                 actions.extend(child_actions)
+
+    return actions
+
+
+def compare_single_elements(
+    a: RouteLitElement,
+    b: RouteLitElement,
+    target: Literal["app", "fragment"],
+    address: Optional[List[int]] = None,
+) -> List[Action]:
+    """
+    Compare two elements and return a list of actions to transform the first element into the second.
+    """
+    if address is None:
+        address = []
+    actions: List[Action] = []
+
+    # First check if the keys match - if not, we need to remove and add
+    if a.key != b.key:
+        actions.append(RemoveAction(address=address, key=a.key, target=target))
+        actions.append(AddAction(address=address, element=b, key=b.key, target=target))
+        return actions
+
+    # If keys match but props differ, update props
+    if a.props != b.props:
+        actions.append(
+            UpdateAction(
+                address=address,
+                props=b.props,
+                key=b.key,
+                target=target,
+            )
+        )
+
+    # Compare children recursively if they exist
+    a_children = a.children or []
+    b_children = b.children or []
+
+    if a_children or b_children:
+        child_actions = compare_elements(
+            a_children,
+            b_children,
+            target=target,
+            address=address,
+        )
+        actions.extend(child_actions)
 
     return actions
 
@@ -172,6 +240,15 @@ def get_elements_at_address(elements: List[RouteLitElement], address: List[int])
             raise ValueError(f"Element at index {idx} has no children")
         _elements = children
     return _elements
+
+
+def get_element_at_address(element: RouteLitElement, address: List[int]) -> Optional[RouteLitElement]:
+    _element = element
+    for idx in address:
+        if idx < 0 or _element.children is None or idx >= len(_element.children):
+            return None
+        _element = _element.children[idx]
+    return _element
 
 
 def set_elements_at_address(
@@ -202,9 +279,51 @@ def set_elements_at_address(
     return new_elements
 
 
+def set_element_at_address(
+    root_element: RouteLitElement,
+    address: List[int],
+    value: RouteLitElement,
+    keep_prev_children: bool = False,
+) -> RouteLitElement:
+    parent_el = root_element
+    for idx in address[:-1]:
+        if parent_el.children is None or idx < 0 or idx >= len(parent_el.children):
+            raise ValueError(f"Cannot set object at address {address} from object of type {type(root_element)}")
+        parent_el = parent_el.children[idx]
+    if parent_el.children is None:
+        parent_el.children = []
+    if address[-1] < 0 or address[-1] >= len(parent_el.children):
+        parent_el.children.append(value)
+        return root_element
+    target_el = parent_el.children[address[-1]]
+    if keep_prev_children and target_el.key == value.key:
+        target_el.props = value.props
+        target_el.virtual = value.virtual
+    else:
+        parent_el.children[address[-1]] = value
+    return root_element
+
+
 def build_view_task_key(view_fn: ViewFn, fragment_id: Optional[str], session_keys: SessionKeys) -> str:
     return f"{session_keys.view_tasks_key}-{view_fn.__name__}#{fragment_id or 'app'}"
 
 
 def remove_none_values(d: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in d.items() if v is not None}
+
+
+def format_options(options: List[Any], format_func: Optional[Callable[[Any], str]] = None) -> List[RLOption]:
+    def _format_fn(option: Union[str, Dict[str, Any]]) -> RLOption:
+        if not isinstance(option, dict) and format_func:
+            return RLOption(label=format_func(option), value=option)
+        if not isinstance(option, dict):
+            return RLOption(label=str(option), value=option)
+        return cast(RLOption, option)
+
+    return [_format_fn(option) for option in options]
+
+
+def json_default(obj: Any) -> str:
+    if isinstance(obj, (datetime, date, time)):
+        return obj.isoformat()
+    return str(obj)

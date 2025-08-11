@@ -71,6 +71,21 @@ def async_to_sync_generator(async_gen: AsyncGenerator[T, None]) -> Generator[T, 
         # Clean up the event loop if we created it
         if loop_was_created and loop is not None:
             try:
-                loop.close()
-            except Exception as e:
-                print(f"Error closing event loop: {e}")
+                # First, give running async generators a chance to finish their
+                # ``aclose`` cleanup logic.  This prevents warnings like
+                # "Task was destroyed but it is pending!" that can appear when
+                # the loop is closed with unfinished async generator tasks.
+                loop.run_until_complete(loop.shutdown_asyncgens())
+
+                # Next, cancel any remaining pending tasks on the loop so that
+                # we do not leave them dangling when the loop is closed.
+                pending_tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
+                for task in pending_tasks:
+                    task.cancel()
+                if pending_tasks:
+                    loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
+            finally:
+                try:
+                    loop.close()
+                except Exception as e:
+                    print(f"Error closing event loop: {e}")
