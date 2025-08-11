@@ -222,6 +222,7 @@ class SetAction(Action):
     The action to set an element.
     """
 
+    address: List[int]
     element: Dict[str, Any]
     key: str
     type: Literal["set"] = "set"

@@ -133,6 +133,7 @@ class RouteLitBuilder:
         Schedule an event to be put in the queue from sync context
         Returns True if the event was scheduled, False otherwise.
         """
+
         if not (self._event_queue and self._loop):
             # Nothing to do - no queue/loop configured.
             return False
@@ -142,7 +143,7 @@ class RouteLitBuilder:
         if self._loop.is_closed():
             return False
 
-        asyncio.run_coroutine_threadsafe(self._event_queue.put(event_data), self._loop)
+        self._loop.call_soon_threadsafe(self._event_queue.put_nowait, event_data)
         return True
 
     @property
@@ -151,7 +152,7 @@ class RouteLitBuilder:
 
     @property
     def root_element(self) -> RouteLitElement:
-        if self.initial_fragment_id:
+        if self.initial_fragment_id and self._root_element.children:
             return self._root_element.children[0]
         return self._root_element
 
@@ -313,7 +314,7 @@ class RouteLitBuilder:
             return
 
         new_element = element.to_dict()
-        if element.name == "fragment" and self.last_fragment_address is not None:
+        if element.name == "fragment" and self.last_fragment_address is not None and element.address is not None:
             new_element["address"] = element.address[len(self.last_fragment_address) - 1 :]
 
         self._schedule_event(
@@ -470,6 +471,7 @@ class RouteLitBuilder:
         key: Optional[str] = None,
         rl_element_type: str = "link",
         rl_text_attr: str = "text",
+        rl_virtual: Optional[bool] = None,
         **kwargs: Any,
     ) -> RouteLitElement:
         """
@@ -500,6 +502,7 @@ class RouteLitBuilder:
                 rl_text_attr: text,
                 **kwargs,
             },
+            virtual=rl_virtual,
         )
         return new_element
 
@@ -904,12 +907,15 @@ class RouteLitBuilder:
         event_name: str = "change",
         event_value_attr: str = "value",
         value_attr: str = "defaultValue",
+        rl_format_func: Optional[Callable[[Any], Any]] = None,
         **kwargs: Any,
-    ) -> Union[str, None]:
-        new_value = self.session_state.get(key, value)
+    ) -> Optional[Union[str, Any]]:
+        new_value: Any = self.session_state.get(key, value)
         has_changed, event_value = self._get_event_value(key, event_name, event_value_attr)
         if has_changed:
-            new_value = event_value or ""
+            new_value = event_value
+            if rl_format_func:
+                new_value = rl_format_func(new_value)
             self.session_state[key] = new_value
             if on_change:
                 on_change(new_value)
@@ -928,7 +934,7 @@ class RouteLitBuilder:
         element_type: str,
         key: str,
         *,
-        options: List[Union[RLOption, str]],
+        options: List[Union[RLOption, str, Dict[str, Any]]],
         value: Optional[Any] = None,
         on_change: Optional[Callable[[Any], None]] = None,
         format_func: Optional[Callable[[Any], str]] = None,
@@ -942,13 +948,13 @@ class RouteLitBuilder:
             self.session_state[key] = new_value
             if on_change:
                 on_change(new_value)
-        options = format_options(options, format_func)
+        new_options = format_options(options, format_func)
         self._create_element(
             name=element_type,
             key=key,
             props={
                 "value": new_value,
-                options_attr: options,
+                options_attr: new_options,
                 **kwargs,
             },
         )
@@ -963,7 +969,7 @@ class RouteLitBuilder:
         key: Optional[str] = None,
         on_change: Optional[Callable[[str], None]] = None,
         **kwargs: Any,
-    ) -> str:
+    ) -> Optional[str]:
         """
         Creates a text input with the given label and value.
 
@@ -1008,7 +1014,7 @@ class RouteLitBuilder:
         key: Optional[str] = None,
         on_change: Optional[Callable[[str], None]] = None,
         **kwargs: Any,
-    ) -> str:
+    ) -> Optional[str]:
         """
         Creates a textarea with the given label and value.
 
@@ -1040,7 +1046,7 @@ class RouteLitBuilder:
     def radio(
         self,
         label: str,
-        options: List[Union[RLOption, str]],
+        options: List[Union[RLOption, str, Dict[str, Any]]],
         *,
         value: Optional[Any] = None,
         key: Optional[str] = None,
@@ -1054,7 +1060,7 @@ class RouteLitBuilder:
 
         Args:
             label (str): The label of the radio group.
-            options (List[Dict[str, Any] | str]): The options of the radio group. Each option can be a string or a dictionary with the following keys:
+            options (List[RLOption | str | Dict[str, Any]]): The options of the radio group. Each option can be a string or a dictionary with the following keys:
                 - label: The label of the option.
                 - value: The value of the option.
                 - caption: The caption of the option.
@@ -1087,7 +1093,7 @@ class RouteLitBuilder:
     def select(
         self,
         label: str,
-        options: List[Union[RLOption, str]],
+        options: List[Union[RLOption, str, Dict[str, Any]]],
         *,
         value: Any = "",
         key: Optional[str] = None,
@@ -1100,7 +1106,7 @@ class RouteLitBuilder:
 
         Args:
             label (str): The label of the select dropdown.
-            options (List[Dict[str, Any] | str]): The options of the select dropdown. Each option can be a string or a dictionary with the following keys: (label, value, disabled)
+            options (List[RLOption | str | Dict[str, Any]]): The options of the select dropdown. Each option can be a string or a dictionary with the following keys: (label, value, disabled)
                 - label: The label of the option.
                 - value: The value of the option.
                 - disabled: Whether the option is disabled.
@@ -1220,7 +1226,7 @@ class RouteLitBuilder:
         element_type: str,
         key: str,
         *,
-        options: List[Union[RLOption, str]],
+        options: List[Union[RLOption, str, Dict[str, Any]]],
         format_func: Optional[Callable[[Any], str]] = None,
         value: Optional[List[Any]] = None,
         on_change: Optional[Callable[[List[Any]], None]] = None,
@@ -1228,7 +1234,7 @@ class RouteLitBuilder:
         options_attr: str = "options",
         **kwargs: Any,
     ) -> List[Any]:
-        new_value = self.session_state.get(key, value) or []
+        new_value: List[Any] = self.session_state.get(key, value) or []
         if not isinstance(new_value, list):
             new_value = value or []
         has_changed, event_value = self._get_event_value(key, "change", "value")
@@ -1237,13 +1243,13 @@ class RouteLitBuilder:
             self.session_state[key] = new_value
             if on_change:
                 on_change(new_value)
-        options = format_options(options, format_func)
+        new_options = format_options(options, format_func)
         self._create_element(
             name=element_type,
             key=key,
             props={
                 value_attr: new_value,
-                options_attr: options,
+                options_attr: new_options,
                 **kwargs,
             },
         )
@@ -1252,7 +1258,7 @@ class RouteLitBuilder:
     def checkbox_group(
         self,
         label: str,
-        options: List[Union[RLOption, str]],
+        options: List[Union[RLOption, str, Dict[str, Any]]],
         *,
         value: Optional[List[Any]] = None,
         key: Optional[str] = None,
@@ -1266,7 +1272,7 @@ class RouteLitBuilder:
 
         Args:
             label (str): The label of the checkbox group.
-            options (List[RLOption | str]): The options of the checkbox group. Each option can be a string or a dictionary with the following keys: label, value, caption (optional), disabled (optional).
+            options (List[RLOption | str | Dict[str, Any]]): The options of the checkbox group. Each option can be a string or a dictionary with the following keys: label, value, caption (optional), disabled (optional).
             value (List[str | int] | None): The value of the checkbox group.
             key (str | None): The key of the checkbox group.
             on_change (Callable[[List[str | int]], None] | None): The function to call when the value changes.
@@ -1384,7 +1390,6 @@ class RouteLitBuilder:
         )
 
     def on_end(self) -> None:
-        # self.clear_form_submit()
         self.session_state.pop("__ignore_submit", None)
         if self.should_rerun_event and self.should_rerun_event.is_set():
             return  # skip the last action when should_rerun is True

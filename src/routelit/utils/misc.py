@@ -1,4 +1,5 @@
-from typing import Any, Callable, Dict, List, Literal, Optional, Union
+from datetime import date, datetime, time
+from typing import Any, Callable, Dict, List, Literal, Optional, Union, cast
 
 from ..domain import (
     Action,
@@ -278,19 +279,29 @@ def set_elements_at_address(
     return new_elements
 
 
-def set_element_at_address(element: RouteLitElement, address: List[int], value: RouteLitElement) -> RouteLitElement:
-    _element = element
+def set_element_at_address(
+    root_element: RouteLitElement,
+    address: List[int],
+    value: RouteLitElement,
+    keep_prev_children: bool = False,
+) -> RouteLitElement:
+    parent_el = root_element
     for idx in address[:-1]:
-        if _element.children is None or idx < 0 or idx >= len(_element.children):
-            raise ValueError(f"Cannot set object at address {address} from object of type {type(element)}")
-        _element = _element.children[idx]
-    if _element.children is None:
-        _element.children = []
-    if address[-1] < 0 or address[-1] >= len(_element.children):
-        _element.children.append(value)
+        if parent_el.children is None or idx < 0 or idx >= len(parent_el.children):
+            raise ValueError(f"Cannot set object at address {address} from object of type {type(root_element)}")
+        parent_el = parent_el.children[idx]
+    if parent_el.children is None:
+        parent_el.children = []
+    if address[-1] < 0 or address[-1] >= len(parent_el.children):
+        parent_el.children.append(value)
+        return root_element
+    target_el = parent_el.children[address[-1]]
+    if keep_prev_children and target_el.key == value.key:
+        target_el.props = value.props
+        target_el.virtual = value.virtual
     else:
-        _element.children[address[-1]] = value
-    return element
+        parent_el.children[address[-1]] = value
+    return root_element
 
 
 def build_view_task_key(view_fn: ViewFn, fragment_id: Optional[str], session_keys: SessionKeys) -> str:
@@ -302,11 +313,17 @@ def remove_none_values(d: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def format_options(options: List[Any], format_func: Optional[Callable[[Any], str]] = None) -> List[RLOption]:
-    def _format_fn(option: Any) -> Any:
+    def _format_fn(option: Union[str, Dict[str, Any]]) -> RLOption:
         if not isinstance(option, dict) and format_func:
-            return {"label": format_func(option), "value": option}
+            return RLOption(label=format_func(option), value=option)
         if not isinstance(option, dict):
-            return {"label": str(option), "value": option}
-        return option
+            return RLOption(label=str(option), value=option)
+        return cast(RLOption, option)
 
     return [_format_fn(option) for option in options]
+
+
+def json_default(obj: Any) -> str:
+    if isinstance(obj, (datetime, date, time)):
+        return obj.isoformat()
+    return str(obj)
