@@ -1,6 +1,6 @@
 [project]
 name = "routelit"
-version = "0.5.2"
+version = "0.5.3"
 description = "Project to build easy user interfaces, agnostic for http frameworks"
 authors = [{ name = "Rolando Gómez Tabar", email = "rolangom@gmail.com" }]
 readme = "README.md"
@@ -44,8 +44,6 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-
 
 [tool.mypy]
 files = ["src"]
@@ -123,3 +121,14 @@ skip_empty = true
 [tool.coverage.run]
 branch = true
 source = ["src"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/routelit"]
+include = [
+  "src/routelit/py.typed",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/routelit/py.typed",
+]
