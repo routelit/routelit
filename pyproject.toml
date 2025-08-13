@@ -1,6 +1,6 @@
 [project]
 name = "routelit"
-version = "0.5.4"
+version = "0.5.5"
 description = "Project to build easy user interfaces, agnostic for http frameworks"
 authors = [{ name = "Rolando Gómez Tabar", email = "rolangom@gmail.com" }]
 readme = "README.md"
@@ -124,11 +124,6 @@ source = ["src"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/routelit"]
-include = [
-  "src/routelit/py.typed",
-]
 
 [tool.hatch.build.targets.sdist]
-include = [
-  "src/routelit/py.typed",
-]
+packages = ["src/routelit"]
