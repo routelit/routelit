@@ -27,6 +27,8 @@ from typing import (
     cast,
 )
 
+from routelit.utils.js_deps import DEFAULT_JS_DEPENDENCIES
+
 from .assets_utils import get_vite_components_assets
 from .builder import RouteLitBuilder
 from .domain import (
@@ -82,6 +84,9 @@ class RouteLit(Generic[BuilderType]):
         session_storage: Optional[MutableMapping[str, Any]] = None,
         inject_builder: bool = True,
         request_timeout: float = 60.0,  # timeout for the request to complete in seconds
+        importmap: Optional[Dict[str, Any]] = None,
+        extra_head_content: Optional[str] = None,
+        extra_body_content: Optional[str] = None,
     ):
         self.BuilderClass = BuilderClass
         self.session_storage = session_storage or {}
@@ -92,6 +97,18 @@ class RouteLit(Generic[BuilderType]):
         self.inject_builder = inject_builder
         self.request_timeout = request_timeout
         self.cancel_events: Dict[str, asyncio.Event] = {}
+        self.importmap = DEFAULT_JS_DEPENDENCIES if importmap is None else {**DEFAULT_JS_DEPENDENCIES, **importmap}
+        self.extra_head_content = extra_head_content
+        self.extra_body_content = extra_body_content
+
+    def get_extra_head_content(self) -> str:
+        return self.extra_head_content or ""
+
+    def get_extra_body_content(self) -> str:
+        return self.extra_body_content or ""
+
+    def get_importmap_json(self) -> str:
+        return json.dumps({"imports": self.importmap}, indent=2)
 
     @contextmanager
     def _set_builder_context(self, builder: BuilderType) -> Generator[BuilderType, None, None]:

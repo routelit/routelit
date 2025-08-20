@@ -25,6 +25,10 @@
       {% endfor %}
     {% endif %}
 
+    {% if RUN_MODE == "prod" %}
+      <link rel="stylesheet" href="https://esm.sh/routelit-client@0.5.3/dist/client.css">
+    {% endif %}
+
     {% if RUN_MODE == "dev_components" and LOCAL_COMPONENTS_SERVER %}
       <script type="module">
         import RefreshRuntime from "{{ LOCAL_COMPONENTS_SERVER }}/@react-refresh";
@@ -41,6 +45,8 @@
         {% endfor %}
       {% endfor %}
     {% endif %}
+
+    {{ extra_head_content | safe }}
   </head>
   <body>
     <input id="routelit-data" type="hidden" value="{{ ROUTELIT_DATA }}" />
@@ -50,13 +56,19 @@
       </div>
     </div>
 
+    {% if RUN_MODE == "prod" %}
+      <script type="importmap">
+        {{ importmap_json | safe }}
+      </script>
+      <script type="module">
+        import { RoutelitClient } from "routelit-client";
+        const client = RoutelitClient || window.RoutelitClient;
+        client.renderApp();
+      </script>
+    {% endif %}
+
     {% if RUN_MODE == "dev_client" and LOCAL_FRONTEND_SERVER %}
       <script type="module" src="{{ LOCAL_FRONTEND_SERVER }}/src/main.tsx"></script>
-    {% elif RUN_MODE != "dev_components" %}
-      <!-- In production: Load client js from built files -->
-      {% for js_asset in default_vite_assets.js_files %}
-        <script type="module" src="/routelit/{{ js_asset }}"></script>
-      {% endfor %}
     {% endif %}
 
     {% if RUN_MODE == "dev_components" and LOCAL_COMPONENTS_SERVER %}
@@ -69,5 +81,7 @@
         {% endfor %}
       {% endfor %}
     {% endif %}
+
+    {{ extra_body_content | safe }}
   </body>
 </html>

@@ -1,0 +1,31 @@
+<svg width="200" height="200" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="rounded-corners">
+      <rect x="0" y="0" width="100" height="100" rx="12" ry="12"/>
+    </clipPath>
+
+    <clipPath id="sun-cropper">
+      <rect x="0" y="0" width="100" height="45"/>
+    </clipPath>
+  </defs>
+  <symbol id="streetline" viewBox="0 0 20 20">
+    <polygon points="2,0 0,20 20,20 18,0"/>
+  </symbol>
+
+  <g clip-path="url(#rounded-corners)">
+
+    <rect width="100" height="100" fill="#E38046"/>
+
+    <circle cx="50" cy="45" r="22" fill="#FFC72C" clip-path="url(#sun-cropper)"/>
+
+    <path d="M38,45 L62,45 L100,100 L0,100 Z" fill="#1D3D54"/>
+
+    <g fill="#FAEEDC">
+      <use href="#streetline" x="46" y="82" width="8" height="10" />
+      <use href="#streetline" x="47" y="68" width="6" height="7" />
+      <use href="#streetline" x="48" y="57" width="4" height="5" />
+      <use href="#streetline" x="48.5" y="48" width="3" height="4" />
+    </g>
+
+  </g>
+</svg>

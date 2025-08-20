@@ -1,6 +1,6 @@
 [project]
 name = "routelit"
-version = "0.5.7"
+version = "0.5.8"
 description = "Project to build easy user interfaces, agnostic for http frameworks"
 authors = [{ name = "Rolando Gómez Tabar", email = "rolangom@gmail.com" }]
 readme = "README.md"
@@ -45,18 +45,6 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build]
-exclude = ["tests", "*.tests", "*.tests.*", "tests.*"]
-
-[tool.hatch.build.targets.wheel]
-packages = ["routelit"]
-
-[tool.hatch.build.targets.sdist]
-include = ["src/routelit"]
-
-[tool.hatch.build.sources]
-"src" = ""
-
 [tool.mypy]
 files = ["src"]
 disallow_untyped_defs = true
@@ -69,7 +57,6 @@ show_error_codes = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
 
 [tool.ruff]
 target-version = "py39"

@@ -10,14 +10,6 @@ inputs:
     description: "uv version to use"
     required: true
     default: "0.6.2"
-  node-version:
-    description: "Node.js version to use"
-    required: false
-    default: "20"
-  pnpm-version:
-    description: "pnpm version to use"
-    required: false
-    default: "8"
 
 runs:
   using: "composite"
@@ -36,16 +28,6 @@ runs:
     - name: Install Python dependencies
       run: uv sync --frozen
       shell: bash
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ inputs.node-version }}
-
-    - name: Setup pnpm
-      uses: pnpm/action-setup@v4
-      with:
-        version: ${{ inputs.pnpm-version }}
 
     - name: Configure git
       run: |
