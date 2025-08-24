@@ -18,15 +18,14 @@
         window.__vite_plugin_react_preamble_installed__ = true;
       </script>
       <script type="module" src="{{ LOCAL_FRONTEND_SERVER }}/@vite/client"></script>
-    {% elif RUN_MODE != "dev_components" %}
-      <!-- In production: Load css from built files -->
       {% for css_asset in default_vite_assets.css_files %}
-        <link rel="stylesheet" href="/routelit/{{ css_asset }}">
+      <link rel="stylesheet" href="/routelit/{{ css_asset }}">
       {% endfor %}
     {% endif %}
 
-    {% if RUN_MODE == "prod" %}
-      <link rel="stylesheet" href="https://esm.sh/routelit-client@0.5.3/dist/client.css">
+    {% if RUN_MODE != "dev_client" %}
+      <!-- In production or dev_components: Load routelit css from esm.sh -->
+      <link rel="stylesheet" href="https://esm.sh/routelit-client@0.5.4/dist/client.css">
     {% endif %}
 
     {% if RUN_MODE == "dev_components" and LOCAL_COMPONENTS_SERVER %}
