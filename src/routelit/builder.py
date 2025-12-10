@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+from io import IOBase
 from typing import (
     Any,
     Callable,
@@ -11,6 +12,8 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    cast,
+    overload,
 )
 
 from routelit.domain import (
@@ -382,6 +385,109 @@ class RouteLitBuilder:
             virtual=True,
         )
         return self._build_nested_builder(fragment)
+
+    def _x_file_input(
+        self,
+        element_type: str,
+        key: str,
+        *,
+        multiple_attr: str = "multiple",
+        multiple: Optional[bool] = False,
+        **kwargs: Any,
+    ) -> Union[IOBase, List[IOBase], None]:
+        value = self.session_state.get(key)
+        has_changed, maybe_files = self._get_event_value(key, "change", "files")
+        if has_changed:
+            if multiple is not True and isinstance(maybe_files, list):
+                # Single file mode (multiple=False or multiple=None/default)
+                value = maybe_files[0] if len(maybe_files) > 0 else None
+            else:
+                value = maybe_files
+            self.session_state[key] = value
+        # ensure the value is seeked to the beginning
+        if value is not None and isinstance(value, IOBase):
+            value.seek(0)
+        if value is not None and isinstance(value, list):
+            for file in value:
+                file.seek(0)
+        self._create_element(
+            name=element_type,
+            key=key,
+            props={"id": key, multiple_attr: multiple, **kwargs},
+        )
+        return cast(Union[IOBase, List[IOBase]], value)
+
+    @overload
+    def file_input(
+        self, label: str, *, key: Optional[str] = None, accept_multiple_files: Literal[True], **kwargs: Any
+    ) -> Optional[List[IOBase]]: ...
+
+    @overload
+    def file_input(
+        self, label: str, *, key: Optional[str] = None, accept_multiple_files: Literal[False], **kwargs: Any
+    ) -> Optional[IOBase]: ...
+
+    @overload
+    def file_input(
+        self, label: str, *, key: Optional[str] = None, accept_multiple_files: None = None, **kwargs: Any
+    ) -> Optional[IOBase]: ...
+
+    def file_input(
+        self,
+        label: str,
+        *,
+        key: Optional[str] = None,
+        accept_multiple_files: Optional[bool] = None,
+        accept: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Union[IOBase, List[IOBase], None]:
+        """
+        Creates a file input component.
+        You'll get the bytes of the uploaded file (BytesIO object).
+        Useful for handling files in memory. Not suitable for large files.
+
+        Args:
+            label (str): The label of the file input.
+            key (Optional[str]): The key of the file input.
+            accept_multiple_files (Optional[bool]): Whether to accept multiple files.
+            accept (Optional[str]): The accept attribute of the file input.
+            kwargs (Dict[str, Any]): The keyword arguments to pass to the file input.
+
+        Returns:
+            Optional[IOBase|List[IOBase]]: The file input component.
+
+        Example:
+        ```python
+        # Multiple files
+        files = ui.file_input("Files", accept_multiple_files=True, accept="text/plain, .txt")
+        if files:
+            for file in files:
+                ui.text(file.read().decode("utf-8"))
+
+        # Single file
+        single_file = ui.file_input("Single File", accept_multiple_files=False, accept="text/plain, .txt")
+        if single_file:
+            ui.text(single_file.read().decode("utf-8"))
+
+        # Handling images
+        import base64
+        image = ui.file_input("Image", accept="image/png")
+        if image:
+            ui.image(src=f"data:image/png;base64,{base64.b64encode(image.read()).decode('utf-8')}", width=128)
+        if image and ui.button("Save image"):
+            with open("image.png", "wb") as f:
+                f.write(image.read())
+                ui.text("Image saved")
+        ```
+        """
+        return self._x_file_input(
+            "input-file",
+            key or self._new_widget_id("input-file", label),
+            multiple=accept_multiple_files,
+            label=label,
+            accept=accept,
+            **kwargs,
+        )
 
     def _x_dialog(
         self,

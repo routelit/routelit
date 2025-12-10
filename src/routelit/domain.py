@@ -1,6 +1,7 @@
 import json
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
+from io import BytesIO, IOBase
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -17,6 +18,7 @@ from typing import (
     Optional,
     TypedDict,
     Union,
+    cast,
 )
 from urllib.parse import urlparse
 
@@ -54,6 +56,10 @@ class RouteLitEvent(TypedDict):
     componentId: str
     data: Dict[str, Any]
     formId: Optional[str]
+    files: Optional[List[IOBase]]
+    """
+    The files to be uploaded.
+    """
 
 
 class SessionKeys(NamedTuple):
@@ -286,7 +292,15 @@ class RouteLitRequest(ABC):
         pass
 
     @abstractmethod
+    def is_multipart(self) -> bool:
+        pass
+
+    @abstractmethod
     def get_json(self) -> Optional[Dict[str, Any]]:
+        pass
+
+    @abstractmethod
+    def get_files(self) -> Optional[list[IOBase]]:
         pass
 
     def _get_internal_referrer(self) -> Optional[str]:
@@ -295,6 +309,15 @@ class RouteLitRequest(ABC):
     def _get_ui_event(self) -> Optional[RouteLitEvent]:
         if self.is_json() and (json_data := self.get_json()) and isinstance(json_data, dict):
             return json_data.get("uiEvent")
+        if self.is_multipart() and (json_data := self.get_json()) and isinstance(json_data, dict):
+            body = json_data.get("uiEvent", {}) or {}
+            if "data" not in body:
+                body["data"] = {}
+            maybe_files = self.get_files()
+            body["data"]["files"] = (
+                [BytesIO(file.read()) for file in maybe_files] if isinstance(maybe_files, list) else maybe_files
+            )
+            return cast(RouteLitEvent, body)
         else:
             return None
 

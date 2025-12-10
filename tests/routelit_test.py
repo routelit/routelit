@@ -93,6 +93,8 @@ class MockRequest(RouteLitRequest):
         form_data=None,
         referer=None,
         fragment_id=None,
+        is_multipart=False,
+        files=None,
     ):
         self._method = method
         self._session_id = session_id
@@ -105,12 +107,20 @@ class MockRequest(RouteLitRequest):
         self._form_data = form_data or {}
         self._referer = referer or ""
         self._fragment_id = fragment_id
+        self._is_multipart = is_multipart
+        self._files = files or []
 
     def is_json(self):
         return False
 
+    def is_multipart(self):
+        return self._is_multipart
+
     def get_json(self):
         return None
+
+    def get_files(self):
+        return self._files if self._files else None
 
     def get_ui_event(self):
         return self._ui_event

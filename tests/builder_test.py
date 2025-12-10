@@ -1,28 +1,77 @@
-from typing import Any, Optional, Tuple
+from io import BytesIO
+from typing import Any, List, Optional, Tuple
 
 import pytest
 
 from routelit.builder import RouteLitBuilder
-from routelit.domain import RouteLitElement
+from routelit.domain import RouteLitElement, RouteLitRequest
 from routelit.exceptions import RerunException
 from routelit.utils.property_dict import PropertyDict
 
 
 # Use the MockRequest from routelit_test or define a similar one here
-class MockRequest:
+class MockRequest(RouteLitRequest):
     """Mock request for testing."""
 
-    def __init__(self, method: str = "GET"):
-        self.method = method
-        self.ui_event = None
-        self.fragment_id = None
-        self.query_params = {}
+    def __init__(self, method: str = "GET", ui_event=None, is_multipart=False, files=None):
+        self._method = method
+        self._ui_event = ui_event
+        self._fragment_id = None
+        self._query_params = {}
+        self._is_multipart = is_multipart
+        self._files = files or []
+        super().__init__()
+
+    @property
+    def method(self):
+        return self._method
+
+    def get_headers(self):
+        return {}
+
+    def get_path_params(self):
+        return None
+
+    def get_referrer(self):
+        return None
+
+    def is_json(self):
+        return False
+
+    def is_multipart(self):
+        return self._is_multipart
+
+    def get_json(self):
+        return None
+
+    def get_files(self):
+        return self._files if self._files else None
+
+    def get_query_param(self, key):
+        return self._query_params.get(key)
+
+    def get_query_param_list(self, key):
+        val = self._query_params.get(key)
+        return [val] if val is not None else []
+
+    def get_session_id(self):
+        return "test_session"
+
+    def get_pathname(self):
+        return "/"
+
+    def get_host(self):
+        return "example.com"
 
     def clear_event(self):
-        self.ui_event = None
+        self._ui_event = None
 
     def clear_fragment_id(self):
-        self.fragment_id = None
+        self._fragment_id = None
+
+    @property
+    def fragment_id(self):
+        return self._fragment_id
 
 
 class MyBuilder(RouteLitBuilder):
@@ -680,7 +729,7 @@ class TestCustomBuilder(TestRouteLitBuilder):
         self.session_state["__prev_elements"] = builder.elements
 
         # Simulate button click
-        self.request.ui_event = {"type": "click", "componentId": button_key, "data": True}
+        self.request._ui_event = {"type": "click", "componentId": button_key, "data": True}
 
         # Second run - with simulated click
         builder = MyBuilder(self.request, self.session_state, self.fragments)
@@ -709,3 +758,318 @@ class TestCustomBuilder(TestRouteLitBuilder):
         main_elements = main.get_children()
         assert len(main_elements) == 1, "Should have one element in main"
         assert main_elements[0].props.get("body") == "Main text"
+
+
+class TestFileInput:
+    """Test file input functionality."""
+
+    @pytest.fixture
+    def mock_request(self):
+        return MockRequest()
+
+    @pytest.fixture
+    def builder(self, mock_request):
+        return RouteLitBuilder(request=mock_request, session_state=PropertyDict({}), fragments={})
+
+    def test_file_input_without_files(self, builder):
+        """Test file_input when no files are uploaded."""
+        result = builder.file_input("Upload File")
+
+        assert result is None
+        assert len(builder.elements) == 1
+        element = builder.elements[0]
+        assert element.name == "input-file"
+        assert element.props.get("label") == "Upload File"
+        assert element.props.get("multiple") is None
+
+    def test_file_input_single_file(self, builder, mock_request):
+        """Test file_input with a single file uploaded."""
+        file1 = BytesIO(b"file content 1")
+        file1.name = "test1.txt"
+
+        # Simulate file upload event
+        file_input_key = builder._new_widget_id("input-file", "Upload File")
+        mock_request._ui_event = {
+            "type": "change",
+            "componentId": file_input_key,
+            "data": {"files": [file1]},
+        }
+
+        result = builder.file_input("Upload File")
+
+        assert result is not None
+        assert isinstance(result, BytesIO)
+        assert result.read() == b"file content 1"
+        assert len(builder.elements) == 1
+
+    def test_file_input_multiple_files(self, builder, mock_request):
+        """Test file_input with multiple files when accept_multiple_files=True."""
+        file1 = BytesIO(b"file content 1")
+        file1.name = "test1.txt"
+        file2 = BytesIO(b"file content 2")
+        file2.name = "test2.txt"
+
+        # Simulate file upload event
+        file_input_key = builder._new_widget_id("input-file", "Upload Files")
+        mock_request._ui_event = {
+            "type": "change",
+            "componentId": file_input_key,
+            "data": {"files": [file1, file2]},
+        }
+
+        result = builder.file_input("Upload Files", accept_multiple_files=True)
+
+        assert result is not None
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert result[0].read() == b"file content 1"
+        assert result[1].read() == b"file content 2"
+        assert len(builder.elements) == 1
+        element = builder.elements[0]
+        assert element.props.get("multiple") is True
+
+    def test_file_input_single_file_with_multiple_flag_false(self, builder, mock_request):
+        """Test file_input with accept_multiple_files=False returns single file even if list provided."""
+        file1 = BytesIO(b"file content 1")
+        file1.name = "test1.txt"
+        file2 = BytesIO(b"file content 2")
+        file2.name = "test2.txt"
+
+        # Simulate file upload event with multiple files
+        file_input_key = builder._new_widget_id("input-file", "Upload File")
+        mock_request._ui_event = {
+            "type": "change",
+            "componentId": file_input_key,
+            "data": {"files": [file1, file2]},
+        }
+
+        result = builder.file_input("Upload File", accept_multiple_files=False)
+
+        # Should return first file only
+        assert result is not None
+        assert isinstance(result, BytesIO)
+        assert result.read() == b"file content 1"
+        element = builder.elements[0]
+        assert element.props.get("multiple") is False
+
+    def test_file_input_with_custom_key(self, builder):
+        """Test file_input with a custom key."""
+        result = builder.file_input("Upload File", key="custom-file-input")
+
+        assert result is None
+        assert len(builder.elements) == 1
+        element = builder.elements[0]
+        assert element.key == "custom-file-input"
+
+    def test_file_input_element_properties(self, builder):
+        """Test that file_input creates element with correct properties."""
+        builder.file_input("Upload File", accept_multiple_files=True, accept=".pdf,.doc")
+
+        assert len(builder.elements) == 1
+        element = builder.elements[0]
+        assert element.name == "input-file"
+        assert element.props.get("label") == "Upload File"
+        assert element.props.get("multiple") is True
+        assert element.props.get("accept") == ".pdf,.doc"
+        assert "id" in element.props
+        assert element.props["id"] == element.key
+
+    def test_file_input_overload_types(self, builder, mock_request):
+        """Test that file_input overloads work correctly with type hints."""
+        # Test with accept_multiple_files=True
+        file1 = BytesIO(b"file content")
+        file_input_key = builder._new_widget_id("input-file", "Upload")
+        mock_request._ui_event = {
+            "type": "change",
+            "componentId": file_input_key,
+            "data": {"files": [file1]},
+        }
+
+        result_multiple: Optional[List[BytesIO]] = builder.file_input("Upload", accept_multiple_files=True)
+        assert isinstance(result_multiple, list) or result_multiple is None
+
+        # Test with accept_multiple_files=False
+        file_input_key2 = builder._new_widget_id("input-file", "Upload Single")
+        mock_request._ui_event = {
+            "type": "change",
+            "componentId": file_input_key2,
+            "data": {"files": [file1]},
+        }
+
+        result_single: Optional[BytesIO] = builder.file_input("Upload Single", accept_multiple_files=False)
+        assert isinstance(result_single, BytesIO) or result_single is None
+
+        # Test with accept_multiple_files=None (default)
+        file_input_key3 = builder._new_widget_id("input-file", "Upload Default")
+        mock_request._ui_event = {
+            "type": "change",
+            "componentId": file_input_key3,
+            "data": {"files": [file1]},
+        }
+
+        result_default: Optional[BytesIO] = builder.file_input("Upload Default")
+        assert isinstance(result_default, BytesIO) or result_default is None
+
+    def test_file_input_event_without_files_key(self, builder, mock_request):
+        """Test file_input when event data doesn't contain 'files' key."""
+        # Simulate file upload event without files key
+        file_input_key = builder._new_widget_id("input-file", "Upload File")
+        mock_request._ui_event = {
+            "type": "change",
+            "componentId": file_input_key,
+            "data": {"other_field": "value"},  # No 'files' key
+        }
+
+        result = builder.file_input("Upload File")
+
+        # Should return None since no files were provided
+        assert result is None
+        assert len(builder.elements) == 1
+
+    def test_file_input_empty_files_list(self, builder, mock_request):
+        """Test file_input when event data contains empty files list."""
+        # Simulate file upload event with empty files list
+        file_input_key = builder._new_widget_id("input-file", "Upload File")
+        mock_request._ui_event = {
+            "type": "change",
+            "componentId": file_input_key,
+            "data": {"files": []},  # Empty files list
+        }
+
+        result = builder.file_input("Upload File")
+
+        # Should return None since no files were uploaded (default is single file mode)
+        assert result is None
+        assert len(builder.elements) == 1
+
+    def test_file_input_empty_files_list_single_mode(self, builder, mock_request):
+        """Test file_input with accept_multiple_files=False when event contains empty files list."""
+        # Simulate file upload event with empty files list
+        file_input_key = builder._new_widget_id("input-file", "Upload File")
+        mock_request._ui_event = {
+            "type": "change",
+            "componentId": file_input_key,
+            "data": {"files": []},  # Empty files list
+        }
+
+        result = builder.file_input("Upload File", accept_multiple_files=False)
+
+        # Should return None since no files were provided and single mode expects one file
+        assert result is None
+        assert len(builder.elements) == 1
+
+    def test_file_input_session_state_persistence(self, builder, mock_request):
+        """Test that file_input returns stored value from session state on subsequent calls."""
+        file1 = BytesIO(b"persistent content")
+        file1.name = "persistent.txt"
+
+        # First call - simulate file upload
+        file_input_key = builder._new_widget_id("input-file", "Upload File")
+        mock_request._ui_event = {
+            "type": "change",
+            "componentId": file_input_key,
+            "data": {"files": [file1]},
+        }
+
+        result1 = builder.file_input("Upload File")
+        assert result1 is not None
+        assert result1.read() == b"persistent content"
+
+        # Second call - no event, should return stored value
+        mock_request._ui_event = None  # Clear event
+        result2 = builder.file_input("Upload File")  # Same label, same key
+
+        assert result2 is not None
+        assert result2.read() == b"persistent content"
+        assert result2 is result1  # Should be the same object
+
+    def test_file_input_with_additional_kwargs(self, builder):
+        """Test file_input with additional keyword arguments."""
+        result = builder.file_input("Upload File", className="custom-class", disabled=True, placeholder="Select a file")
+
+        assert result is None
+        assert len(builder.elements) == 1
+        element = builder.elements[0]
+        assert element.props.get("className") == "custom-class"
+        assert element.props.get("disabled") is True
+        assert element.props.get("placeholder") == "Select a file"
+
+    def test_file_input_accept_parameter(self, builder):
+        """Test file_input accept parameter specifically."""
+        result = builder.file_input("Upload File", accept="image/*")
+
+        assert result is None
+        assert len(builder.elements) == 1
+        element = builder.elements[0]
+        assert element.props.get("accept") == "image/*"
+
+    def test_file_input_multiple_files_comprehensive(self, builder, mock_request):
+        """Comprehensive test for multiple files handling with various scenarios."""
+        # Create multiple files with different content and properties
+        file1 = BytesIO(b"Content of first file")
+        file1.name = "document1.txt"
+        file1.seek(10)  # Move position to test seeking
+
+        file2 = BytesIO(b"Content of second file")
+        file2.name = "document2.txt"
+
+        file3 = BytesIO(b"Content of third file")
+        file3.name = "document3.txt"
+
+        files_list = [file1, file2, file3]
+
+        # Simulate file upload event with custom key
+        custom_key = "multi-file-upload"
+        mock_request._ui_event = {
+            "type": "change",
+            "componentId": custom_key,
+            "data": {"files": files_list},
+        }
+
+        # Call with multiple files enabled and additional parameters
+        result = builder.file_input(
+            "Upload Multiple Files",
+            key=custom_key,
+            accept_multiple_files=True,
+            accept=".txt,.md",
+            className="multi-upload",
+            required=True,
+        )
+
+        # Verify return value
+        assert result is not None
+        assert isinstance(result, list)
+        assert len(result) == 3
+
+        # Verify all files are properly seeked to beginning and readable
+        assert result[0].read() == b"Content of first file"
+        assert result[1].read() == b"Content of second file"
+        assert result[2].read() == b"Content of third file"
+
+        # Verify file objects are the same instances (not copies)
+        assert result[0] is file1
+        assert result[1] is file2
+        assert result[2] is file3
+
+        # Verify element creation
+        assert len(builder.elements) == 1
+        element = builder.elements[0]
+        assert element.key == custom_key
+        assert element.name == "input-file"
+        assert element.props.get("multiple") is True
+        assert element.props.get("accept") == ".txt,.md"
+        assert element.props.get("className") == "multi-upload"
+        assert element.props.get("required") is True
+        assert element.props.get("id") == custom_key
+
+        # Test session state persistence - call again without event
+        mock_request._ui_event = None
+        result2 = builder.file_input("Upload Multiple Files", key=custom_key, accept_multiple_files=True)
+
+        # Should return the same files from session state
+        assert result2 is not None
+        assert isinstance(result2, list)
+        assert len(result2) == 3
+        assert result2[0].read() == b"Content of first file"  # File should be re-seeked
+        assert result2[1].read() == b"Content of second file"
+        assert result2[2].read() == b"Content of third file"

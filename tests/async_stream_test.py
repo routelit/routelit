@@ -33,6 +33,8 @@ class MockRequest(RouteLitRequest):
         pathname="/",
         ui_event=None,
         fragment_id=None,
+        is_multipart=False,
+        files=None,
     ):
         self._method = method
         self._session_id = session_id
@@ -40,6 +42,8 @@ class MockRequest(RouteLitRequest):
         self._pathname = pathname
         self._ui_event = ui_event
         self._fragment_id = fragment_id
+        self._is_multipart = is_multipart
+        self._files = files or []
         # Don't call super().__init__() to avoid overriding our values
 
     def get_headers(self):
@@ -54,8 +58,14 @@ class MockRequest(RouteLitRequest):
     def is_json(self):
         return False
 
+    def is_multipart(self):
+        return self._is_multipart
+
     def get_json(self):
         return None
+
+    def get_files(self):
+        return self._files if self._files else None
 
     def get_query_param(self, key):
         return None

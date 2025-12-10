@@ -52,6 +52,8 @@ class MockRouteLitRequest(RouteLitRequest):
         json_data: Optional[Dict[str, Any]] = None,
         fragment_id: Optional[str] = None,
         ui_event: Optional[Dict[str, Any]] = None,
+        is_multipart: bool = False,
+        files: Optional[List] = None,
     ):
         self._method = method
         self._session_id = session_id
@@ -64,6 +66,8 @@ class MockRouteLitRequest(RouteLitRequest):
         self._json_data = json_data or {}
         self._fragment_id = fragment_id
         self._ui_event = ui_event
+        self._is_multipart = is_multipart
+        self._files = files or []
 
     @property
     def method(self) -> str:
@@ -113,6 +117,17 @@ class MockRouteLitRequest(RouteLitRequest):
     def ui_event(self) -> Optional[Dict[str, Any]]:
         if self._ui_event is not None:
             return self._ui_event
+        # Handle multipart requests with files
+        if self._is_multipart and (json_data := self.get_json()) and isinstance(json_data, dict):
+            body = json_data.get("uiEvent")
+            if body and isinstance(body, dict):
+                if "data" not in body:
+                    body["data"] = {}
+                body["data"]["files"] = self.get_files()
+                return body
+        # Handle JSON requests
+        if self._is_json_request and "uiEvent" in self._json_data:
+            return self._json_data["uiEvent"]
         if self._is_json_request and "ui_event" in self._json_data:
             return self._json_data["ui_event"]
         return None
@@ -144,8 +159,17 @@ class MockRouteLitRequest(RouteLitRequest):
     def is_json(self) -> bool:
         return self._is_json_request
 
+    def is_multipart(self) -> bool:
+        return self._is_multipart
+
     def get_json(self) -> Optional[Dict[str, Any]]:
-        return self._json_data if self._is_json_request else None
+        # Return JSON data for both JSON and multipart requests
+        if self._is_json_request or self._is_multipart:
+            return self._json_data if self._json_data else None
+        return None
+
+    def get_files(self) -> Optional[List]:
+        return self._files if self._files else None
 
     def get_query_param_list(self, key: str) -> List[str]:
         return [self._query_params.get(key)] if key in self._query_params else []
@@ -477,6 +501,41 @@ class TestRouteLitEvent:
         assert event["componentId"] == "link-1"
         assert event["data"] == {"url": "/new-page"}
         assert event["formId"] is None
+
+    def test_event_with_files(self):
+        """Test RouteLitEvent with files field"""
+        from io import BytesIO
+
+        file1 = BytesIO(b"file content 1")
+        file2 = BytesIO(b"file content 2")
+        files = [file1, file2]
+
+        event = RouteLitEvent(
+            type="change",
+            componentId="file-input-1",
+            data={"files": files},
+            formId=None,
+            files=files,
+        )
+
+        assert event["type"] == "change"
+        assert event["componentId"] == "file-input-1"
+        assert event["files"] == files
+        assert len(event["files"]) == 2
+
+    def test_event_without_files(self):
+        """Test RouteLitEvent without files field"""
+        event = RouteLitEvent(
+            type="click",
+            componentId="button-1",
+            data={},
+            formId=None,
+            files=None,
+        )
+
+        assert event["type"] == "click"
+        assert event["componentId"] == "button-1"
+        assert event["files"] is None
 
 
 class TestAssetTarget:
@@ -846,6 +905,127 @@ class TestRouteLitRequest:
 
         # Should handle empty JSON gracefully
         assert request.ui_event is None
+
+    def test_is_multipart(self):
+        """Test is_multipart method"""
+        request = MockRouteLitRequest(is_multipart=True)
+        assert request.is_multipart() is True
+
+        request_no_multipart = MockRouteLitRequest(is_multipart=False)
+        assert request_no_multipart.is_multipart() is False
+
+    def test_get_files(self):
+        """Test get_files method"""
+        from io import BytesIO
+
+        file1 = BytesIO(b"file content 1")
+        file2 = BytesIO(b"file content 2")
+        files = [file1, file2]
+
+        request = MockRouteLitRequest(files=files)
+        result = request.get_files()
+
+        assert result is not None
+        assert len(result) == 2
+        assert result[0].read() == b"file content 1"
+        assert result[1].read() == b"file content 2"
+
+    def test_get_files_empty(self):
+        """Test get_files returns None when no files"""
+        request = MockRouteLitRequest(files=[])
+        assert request.get_files() is None
+
+    def test_ui_event_extraction_from_multipart(self):
+        """Test UI event extraction from multipart request with files"""
+        from io import BytesIO
+
+        file1 = BytesIO(b"file content")
+        file1.name = "test.txt"
+        files = [file1]
+
+        json_data = {
+            "uiEvent": {
+                "type": "change",
+                "componentId": "file-input-1",
+                "data": {},
+            }
+        }
+
+        request = MockRouteLitRequest(is_multipart=True, json_data=json_data, files=files)
+
+        ui_event = request.ui_event
+        assert ui_event is not None
+        assert ui_event["type"] == "change"
+        assert ui_event["componentId"] == "file-input-1"
+        assert "data" in ui_event
+        assert "files" in ui_event["data"]
+        assert ui_event["data"]["files"] == files
+
+    def test_ui_event_extraction_from_multipart_without_data(self):
+        """Test UI event extraction from multipart when data field is missing"""
+        from io import BytesIO
+
+        file1 = BytesIO(b"file content")
+        files = [file1]
+
+        json_data = {
+            "uiEvent": {
+                "type": "change",
+                "componentId": "file-input-1",
+            }
+        }
+
+        request = MockRouteLitRequest(is_multipart=True, json_data=json_data, files=files)
+
+        ui_event = request.ui_event
+        assert ui_event is not None
+        assert ui_event["type"] == "change"
+        assert "data" in ui_event
+        assert "files" in ui_event["data"]
+        assert ui_event["data"]["files"] == files
+
+    def test_ui_event_extraction_from_multipart_no_files(self):
+        """Test UI event extraction from multipart request without files"""
+        json_data = {
+            "uiEvent": {
+                "type": "change",
+                "componentId": "file-input-1",
+                "data": {"value": "test"},
+            }
+        }
+
+        request = MockRouteLitRequest(is_multipart=True, json_data=json_data, files=[])
+
+        ui_event = request.ui_event
+        assert ui_event is not None
+        assert ui_event["type"] == "change"
+        assert "data" in ui_event
+        assert ui_event["data"].get("files") is None
+
+    def test_ui_event_extraction_multipart_priority_over_json(self):
+        """Test that multipart takes priority over JSON for file handling"""
+        from io import BytesIO
+
+        file1 = BytesIO(b"file content")
+        files = [file1]
+
+        # Both is_json and is_multipart are True, but multipart should handle files
+        json_data = {
+            "uiEvent": {
+                "type": "change",
+                "componentId": "file-input-1",
+                "data": {},
+            }
+        }
+
+        request = MockRouteLitRequest(is_json_request=True, is_multipart=True, json_data=json_data, files=files)
+
+        ui_event = request.ui_event
+        # When multipart is True, it should attach files to the event
+        assert ui_event is not None
+        assert "data" in ui_event
+        assert "files" in ui_event["data"]
+        assert ui_event["data"]["files"] == files
 
 
 class TestEdgeCases:
