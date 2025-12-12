@@ -26,4 +26,32 @@ Install routelit using pip:
 
 ```bash
 pip install routelit
+# or
+uv add routelit
+```
+
+## 📖 Quick Start
+
+Here's a simple example of how to use routelit with Flask:
+
+```bash
+uv add routelit-flask
+```
+
+```python
+from flask import Flask
+from routelit import RouteLit, RouteLitBuilder
+from routelit_flask import RouteLitFlaskAdapter
+
+app = Flask(__name__)
+
+rl = RouteLit()
+rl_adapter = RouteLitFlaskAdapter(rl).configure(app)
+
+def index_view(rl: RouteLitBuilder):
+    rl.text("Hello, World!")
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    return rl_adapter.response(index_view)
 ```
