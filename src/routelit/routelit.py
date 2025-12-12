@@ -2,6 +2,8 @@ import asyncio
 import contextlib
 import contextvars
 import functools
+import hashlib
+import inspect
 import json
 import time
 import warnings
@@ -82,6 +84,7 @@ class RouteLit(Generic[BuilderType]):
         self,
         BuilderClass: Type[BuilderType] = RouteLitBuilder,  # type: ignore[assignment]
         session_storage: Optional[MutableMapping[str, Any]] = None,
+        cache_backend: Optional[MutableMapping[str, Any]] = None,
         inject_builder: bool = True,
         request_timeout: float = 60.0,  # timeout for the request to complete in seconds
         importmap: Optional[Dict[str, Any]] = None,
@@ -90,6 +93,7 @@ class RouteLit(Generic[BuilderType]):
     ):
         self.BuilderClass = BuilderClass
         self.session_storage = session_storage or {}
+        self.cache_backend = cache_backend or {}
         self.fragment_registry: Dict[str, Callable[[RouteLitBuilder], Any]] = {}
         self._session_builder_context: contextvars.ContextVar[RouteLitBuilder] = contextvars.ContextVar(
             "session_builder"
@@ -841,6 +845,114 @@ class RouteLit(Generic[BuilderType]):
                 await coro
 
         return run_view_async
+
+    def cache_data(
+        self, func: Optional[Callable[..., Any]] = None
+    ) -> Union[Callable[[Callable[..., Any]], Callable[..., Any]], Callable[..., Any]]:
+        """
+        Decorator to cache function results based on input parameters.
+        Parameters starting with underscore are excluded from cache key generation.
+        Supports both synchronous and asynchronous functions.
+
+        Can be used with or without parentheses:
+        @rl.cache_data() or @rl.cache_data
+
+        Args:
+            func: The function to be decorated (when used without parentheses)
+
+        Returns:
+            The decorated function that caches its results
+
+        Example:
+            ```python
+            rl = RouteLit()
+
+            @rl.cache_data()
+            def expensive_computation(x, y, _debug=False):
+                return x + y  # _debug parameter is excluded from cache key
+
+            @rl.cache_data  # Also works without parentheses
+            def another_function(a, b, _internal=None):
+                return a * b
+
+            @rl.cache_data()
+            async def async_computation(x, y, _debug=False):
+                return x + y  # Works with async functions too
+
+            # First call will execute the function
+            result1 = expensive_computation(1, 2, _debug=True)
+
+            # Second call with same x, y but different _debug will return cached result
+            result2 = expensive_computation(1, 2, _debug=False)  # Returns cached result
+
+            # Call with different x, y will execute function again
+            result3 = expensive_computation(2, 3, _debug=True)  # Executes function
+
+            # Async functions work the same way
+            result4 = await async_computation(1, 2, _debug=True)
+            result5 = await async_computation(1, 2, _debug=False)  # Returns cached result
+            ```
+        """
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            # Check if the function is async
+            is_async = inspect.iscoroutinefunction(func)
+
+            def _get_cache_key(*args: Any, **kwargs: Any) -> str:
+                """Helper function to generate cache key from arguments."""
+                # Get function signature to identify parameter names
+                sig = inspect.signature(func)
+                bound_args = sig.bind(*args, **kwargs)
+                bound_args.apply_defaults()
+
+                # Filter out parameters that start with underscore
+                cache_params = {}
+                for param_name, param_value in bound_args.arguments.items():
+                    if not param_name.startswith("_"):
+                        cache_params[param_name] = param_value
+
+                # Generate cache key from function name and filtered parameters
+                cache_key_data = {"func_name": func.__name__, "params": cache_params}
+                return hashlib.md5(json.dumps(cache_key_data, sort_keys=True, default=str).encode()).hexdigest()  # noqa: S324; type: ignore[hashlib-insecure-hash-function]
+
+            if is_async:
+
+                @functools.wraps(func)
+                async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                    cache_key = _get_cache_key(*args, **kwargs)
+
+                    # Check if result is already cached
+                    if cache_key in self.cache_backend:
+                        return self.cache_backend[cache_key]
+
+                    # Execute async function and cache result
+                    result = await func(*args, **kwargs)
+                    self.cache_backend[cache_key] = result
+                    return result
+
+                return async_wrapper
+            else:
+
+                @functools.wraps(func)
+                def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+                    cache_key = _get_cache_key(*args, **kwargs)
+
+                    # Check if result is already cached
+                    if cache_key in self.cache_backend:
+                        return self.cache_backend[cache_key]
+
+                    # Execute function and cache result
+                    result = func(*args, **kwargs)
+                    self.cache_backend[cache_key] = result
+                    return result
+
+                return sync_wrapper
+
+        # Handle both @cache_data and @cache_data() usage patterns
+        if func is None:
+            return decorator
+        else:
+            return decorator(func)
 
     @staticmethod
     def _check_if_view_task_failed(view_task: asyncio.Task) -> None:

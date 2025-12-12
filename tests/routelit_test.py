@@ -1261,3 +1261,200 @@ class TestRouteLit:
         await routelit._cancel_view_task(task, timeout=0.1)
 
         # Should not raise any exception
+
+    def test_cache_data_decorator(self):
+        """Test that cache_data decorator works correctly with parameter exclusion."""
+        rl = RouteLit()
+
+        call_count = 0
+
+        @rl.cache_data()
+        def expensive_function(x, y, _debug=False, _internal_flag=None):
+            nonlocal call_count
+            call_count += 1
+            return x + y
+
+        # First call should execute the function
+        result1 = expensive_function(1, 2, _debug=True, _internal_flag="test")
+        assert result1 == 3
+        assert call_count == 1
+
+        # Second call with same x, y but different excluded parameters should return cached result
+        result2 = expensive_function(1, 2, _debug=False, _internal_flag="different")
+        assert result2 == 3
+        assert call_count == 1  # Should not have incremented
+
+        # Call with different x, y should execute function again
+        result3 = expensive_function(2, 3, _debug=True)
+        assert result3 == 5
+        assert call_count == 2
+
+        # Verify cache contains expected results
+        assert len(rl.cache_backend) == 2  # Two different cache entries
+
+    def test_cache_data_decorator_without_parentheses(self):
+        """Test that cache_data decorator works without parentheses."""
+        rl = RouteLit()
+
+        call_count = 0
+
+        @rl.cache_data  # No parentheses
+        def simple_function(x, y, _debug=False):
+            nonlocal call_count
+            call_count += 1
+            return x * y
+
+        # First call should execute the function
+        result1 = simple_function(3, 4, _debug=True)
+        assert result1 == 12
+        assert call_count == 1
+
+        # Second call with same x, y but different excluded parameter should return cached result
+        result2 = simple_function(3, 4, _debug=False)
+        assert result2 == 12
+        assert call_count == 1  # Should not have incremented
+
+        # Call with different x, y should execute function again
+        result3 = simple_function(5, 6, _debug=True)
+        assert result3 == 30
+        assert call_count == 2
+
+        # Verify cache contains expected results
+        assert len(rl.cache_backend) == 2  # Two different cache entries
+
+    @pytest.mark.asyncio
+    async def test_cache_data_decorator_async_function(self):
+        """Test that cache_data decorator works with async functions."""
+        rl = RouteLit()
+
+        call_count = 0
+
+        @rl.cache_data()
+        async def async_expensive_function(x, y, _debug=False, _internal_flag=None):
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0.01)  # Simulate async work
+            return x + y
+
+        # First call should execute the function
+        result1 = await async_expensive_function(1, 2, _debug=True, _internal_flag="test")
+        assert result1 == 3
+        assert call_count == 1
+
+        # Second call with same x, y but different excluded parameters should return cached result
+        result2 = await async_expensive_function(1, 2, _debug=False, _internal_flag="different")
+        assert result2 == 3
+        assert call_count == 1  # Should not have incremented
+
+        # Call with different x, y should execute function again
+        result3 = await async_expensive_function(2, 3, _debug=True)
+        assert result3 == 5
+        assert call_count == 2
+
+        # Verify cache contains expected results
+        assert len(rl.cache_backend) == 2  # Two different cache entries
+
+    @pytest.mark.asyncio
+    async def test_cache_data_decorator_async_without_parentheses(self):
+        """Test that cache_data decorator works with async functions without parentheses."""
+        rl = RouteLit()
+
+        call_count = 0
+
+        @rl.cache_data  # No parentheses
+        async def async_simple_function(x, y, _debug=False):
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0.01)  # Simulate async work
+            return x * y
+
+        # First call should execute the function
+        result1 = await async_simple_function(3, 4, _debug=True)
+        assert result1 == 12
+        assert call_count == 1
+
+        # Second call with same x, y but different excluded parameter should return cached result
+        result2 = await async_simple_function(3, 4, _debug=False)
+        assert result2 == 12
+        assert call_count == 1  # Should not have incremented
+
+        # Call with different x, y should execute function again
+        result3 = await async_simple_function(5, 6, _debug=True)
+        assert result3 == 30
+        assert call_count == 2
+
+        # Verify cache contains expected results
+        assert len(rl.cache_backend) == 2  # Two different cache entries
+
+    @pytest.mark.asyncio
+    async def test_cache_data_decorator_mixed_sync_and_async(self):
+        """Test that cache_data decorator works correctly with both sync and async functions."""
+        rl = RouteLit()
+
+        sync_call_count = 0
+        async_call_count = 0
+
+        @rl.cache_data()
+        def sync_function(x, y):
+            nonlocal sync_call_count
+            sync_call_count += 1
+            return x + y
+
+        @rl.cache_data()
+        async def async_function(x, y):
+            nonlocal async_call_count
+            async_call_count += 1
+            await asyncio.sleep(0.01)
+            return x + y
+
+        # Test sync function
+        result1 = sync_function(1, 2)
+        assert result1 == 3
+        assert sync_call_count == 1
+
+        result2 = sync_function(1, 2)
+        assert result2 == 3
+        assert sync_call_count == 1  # Cached
+
+        # Test async function
+        result3 = await async_function(1, 2)
+        assert result3 == 3
+        assert async_call_count == 1
+
+        result4 = await async_function(1, 2)
+        assert result4 == 3
+        assert async_call_count == 1  # Cached
+
+        # Verify both functions have separate cache entries
+        assert len(rl.cache_backend) == 2  # One for sync, one for async
+
+    @pytest.mark.asyncio
+    async def test_cache_data_decorator_async_with_complex_types(self):
+        """Test that cache_data decorator works with async functions and complex parameter types."""
+        rl = RouteLit()
+
+        call_count = 0
+
+        @rl.cache_data()
+        async def async_function_with_dict(data: dict, multiplier: int, _debug=False):
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0.01)
+            return data.get("value", 0) * multiplier
+
+        # First call
+        result1 = await async_function_with_dict({"value": 10}, 2, _debug=True)
+        assert result1 == 20
+        assert call_count == 1
+
+        # Same parameters, different _debug (should use cache)
+        result2 = await async_function_with_dict({"value": 10}, 2, _debug=False)
+        assert result2 == 20
+        assert call_count == 1
+
+        # Different parameters
+        result3 = await async_function_with_dict({"value": 5}, 3, _debug=True)
+        assert result3 == 15
+        assert call_count == 2
+
+        assert len(rl.cache_backend) == 2
