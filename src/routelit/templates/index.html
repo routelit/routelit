@@ -55,10 +55,10 @@
       </div>
     </div>
 
+    <script type="importmap">
+      {{ importmap_json | safe }}
+    </script>
     {% if RUN_MODE == "prod" %}
-      <script type="importmap">
-        {{ importmap_json | safe }}
-      </script>
       <script type="module">
         import { RoutelitClient } from "routelit-client";
         const client = RoutelitClient || window.RoutelitClient;
