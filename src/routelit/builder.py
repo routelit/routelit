@@ -393,6 +393,7 @@ class RouteLitBuilder:
         *,
         multiple_attr: str = "multiple",
         multiple: Optional[bool] = False,
+        on_change: Optional[Callable[[Union[IOBase, List[IOBase]]], None]] = None,
         **kwargs: Any,
     ) -> Union[IOBase, List[IOBase], None]:
         value = self.session_state.get(key)
@@ -404,6 +405,8 @@ class RouteLitBuilder:
             else:
                 value = maybe_files
             self.session_state[key] = value
+            if on_change:
+                on_change(value)
         # ensure the value is seeked to the beginning
         if value is not None and isinstance(value, IOBase):
             value.seek(0)
@@ -419,26 +422,36 @@ class RouteLitBuilder:
 
     @overload
     def file_input(
-        self, label: str, *, key: Optional[str] = None, accept_multiple_files: Literal[True], **kwargs: Any
+        self,
+        label: str,
+        *,
+        key: Optional[str] = None,
+        accept_multiple_files: Literal[True],
+        accept: Optional[str] = None,
+        on_change: Optional[Callable[[List[IOBase]], None]] = None,
+        **kwargs: Any,
     ) -> Optional[List[IOBase]]: ...
 
     @overload
     def file_input(
-        self, label: str, *, key: Optional[str] = None, accept_multiple_files: Literal[False], **kwargs: Any
+        self,
+        label: str,
+        *,
+        key: Optional[str] = None,
+        accept_multiple_files: Literal[False] = ...,
+        accept: Optional[str] = None,
+        on_change: Optional[Callable[[IOBase], None]] = None,
+        **kwargs: Any,
     ) -> Optional[IOBase]: ...
 
-    @overload
-    def file_input(
-        self, label: str, *, key: Optional[str] = None, accept_multiple_files: None = None, **kwargs: Any
-    ) -> Optional[IOBase]: ...
-
-    def file_input(
+    def file_input(  # type: ignore[misc]
         self,
         label: str,
         *,
         key: Optional[str] = None,
         accept_multiple_files: Optional[bool] = None,
         accept: Optional[str] = None,
+        on_change: Optional[Callable[[Union[IOBase, List[IOBase]]], None]] = None,
         **kwargs: Any,
     ) -> Union[IOBase, List[IOBase], None]:
         """
@@ -457,28 +470,32 @@ class RouteLitBuilder:
             Optional[IOBase|List[IOBase]]: The file input component.
 
         Example:
-        ```python
-        # Multiple files
-        files = ui.file_input("Files", accept_multiple_files=True, accept="text/plain, .txt")
-        if files:
-            for file in files:
-                ui.text(file.read().decode("utf-8"))
+            ```python
+            # Multiple files
+            files = ui.file_input("Files", accept_multiple_files=True, accept="text/plain, .txt")
+            if files:
+                for file in files:
+                    ui.text(file.read().decode("utf-8"))
 
-        # Single file
-        single_file = ui.file_input("Single File", accept_multiple_files=False, accept="text/plain, .txt")
-        if single_file:
-            ui.text(single_file.read().decode("utf-8"))
+            # Single file
+            single_file = ui.file_input("Single File", accept_multiple_files=False, accept="text/plain, .txt")
+            if single_file:
+                ui.text(single_file.read().decode("utf-8"))
 
-        # Handling images
-        import base64
-        image = ui.file_input("Image", accept="image/png")
-        if image:
-            ui.image(src=f"data:image/png;base64,{base64.b64encode(image.read()).decode('utf-8')}", width=128)
-        if image and ui.button("Save image"):
-            with open("image.png", "wb") as f:
-                f.write(image.read())
-                ui.text("Image saved")
-        ```
+            # Handling images
+            import base64
+            image = ui.file_input("Image", accept="image/png")
+            if image:
+                ui.image(src=f"data:image/png;base64,{base64.b64encode(image.read()).decode('utf-8')}", width=128)
+            if image and ui.button("Save image"):
+                with open("image.png", "wb") as f:
+                    f.write(image.read())
+                    ui.text("Image saved")
+
+            def on_file_change(value: Union[IOBase, List[IOBase]]):
+                ui.text(f"File changed: {value}")
+            file_input = ui.file_input("File", on_change=on_file_change)
+            ```
         """
         return self._x_file_input(
             "input-file",
@@ -486,6 +503,7 @@ class RouteLitBuilder:
             multiple=accept_multiple_files,
             label=label,
             accept=accept,
+            on_change=on_change,
             **kwargs,
         )
 
@@ -540,8 +558,8 @@ class RouteLitBuilder:
 
     def form(self, key: str) -> "RouteLitBuilder":
         """
-        Creates a form area that do not submit input values to the server until the form is submitted.
-        Use button(..., event_name="submit") to submit the form.
+        Creates a form area that do not process the inputs values contained in it until the form is submitted.
+        Use `button(..., event_name="submit")` or `form_submit_button()` to submit the form.
 
         Args:
             key (str): The key of the form.
@@ -550,14 +568,14 @@ class RouteLitBuilder:
             RouteLitBuilder: A builder for the form.
 
         Example:
-        ```python
-        with ui.form("login"):
-            username = ui.text_input("Username")
-            password = ui.text_input("Password", type="password")
-            is_submitted = ui.button("Login", event_name="submit")
-            if is_submitted:
-                ui.text(f"Login successful for {username}")
-        ```
+            ```python
+            with ui.form("login"):
+                username = ui.text_input("Username")
+                password = ui.text_input("Password", type="password")
+                is_submitted = ui.form_submit_button("Login") # or ui.button("Login", event_name="submit")
+                if is_submitted:
+                    ui.text(f"Login successful for {username}")
+            ```
         """
         form = self._create_element(
             name="form",
@@ -592,11 +610,11 @@ class RouteLitBuilder:
             kwargs (Dict[str, Any]): The keyword arguments to pass to the link.
 
         Example:
-        ```python
-        ui.link("/signup", text="Signup")
-        ui.link("/login", text="Login", replace=True)
-        ui.link("https://www.google.com", text="Google", is_external=True)
-        ```
+            ```python
+            ui.link("/signup", text="Signup")
+            ui.link("/login", text="Login", replace=True)
+            ui.link("https://www.google.com", text="Google", is_external=True)
+            ```
         """
         new_element = self._create_element(
             name=rl_element_type,
@@ -633,12 +651,12 @@ class RouteLitBuilder:
             kwargs (Dict[str, Any]): The keyword arguments to pass to the link area.
 
         Example:
-        ```python
-        with ui.link_area("https://www.google.com"):
-            with ui.flex(direction="row", gap="small"):
-                ui.image("https://www.google.com/favicon.ico", width="24px", height="24px")
-                ui.text("Google")
-        ```
+            ```python
+            with ui.link_area("https://www.google.com"):
+                with ui.flex(direction="row", gap="small"):
+                    ui.image("https://www.google.com/favicon.ico", width="24px", height="24px")
+                    ui.text("Google")
+            ```
         """
         link_element = self.link(
             href,
@@ -660,10 +678,10 @@ class RouteLitBuilder:
             kwargs (Dict[str, Any]): The keyword arguments to pass to the container.
 
         Example:
-        ```python
-        with ui.container(height="100px"):
-            ui.text("Container")
-        ```
+            ```python
+            with ui.container(height="100px"):
+                ui.text("Container")
+            ```
         """
         container = self._create_element(
             name="container",
@@ -689,9 +707,9 @@ class RouteLitBuilder:
             key (Optional[str]): The key of the markdown.
 
         Example:
-        ```python
-        ui.markdown("**Bold** *italic* [link](https://www.google.com)")
-        ```
+            ```python
+            ui.markdown("**Bold** *italic* [link](https://www.google.com)")
+            ```
         """
         self._create_element(
             name="markdown",
@@ -708,9 +726,9 @@ class RouteLitBuilder:
             key (Optional[str]): The key of the text.
 
         Example:
-        ```python
-        ui.text("Text")
-        ```
+            ```python
+            ui.text("Text")
+            ```
         """
         self.markdown(body, allow_unsafe_html=False, key=key, **kwargs)
 
@@ -723,9 +741,9 @@ class RouteLitBuilder:
             key (Optional[str]): The key of the title.
 
         Example:
-        ```python
-        ui.title("Title")
-        ```
+            ```python
+            ui.title("Title")
+            ```
         """
         self._create_element(
             name="title",
@@ -742,9 +760,9 @@ class RouteLitBuilder:
             key (Optional[str]): The key of the header.
 
         Example:
-        ```python
-        ui.header("Header")
-        ```
+            ```python
+            ui.header("Header")
+            ```
         """
         self._create_element(
             name="header",
@@ -761,9 +779,9 @@ class RouteLitBuilder:
             key (Optional[str]): The key of the subheader.
 
         Example:
-        ```python
-        ui.subheader("Subheader")
-        ```
+            ```python
+            ui.subheader("Subheader")
+            ```
         """
         self._create_element(
             name="subheader",
@@ -781,9 +799,9 @@ class RouteLitBuilder:
             kwargs (Dict[str, Any]): The keyword arguments to pass to the image.
 
         Example:
-        ```python
-        ui.image("https://www.google.com/favicon.ico", alt="Google", width="24px", height="24px")
-        ```
+            ```python
+            ui.image("https://www.google.com/favicon.ico", alt="Google", width="24px", height="24px")
+            ```
         """
         self._create_element(
             name="image",
@@ -802,8 +820,9 @@ class RouteLitBuilder:
 
         Returns:
             RouteLitBuilder: A builder for the expander.
-        ```python
-        Usage:
+
+        Example:
+            ```python
             def build_index_view(ui: RouteLitBuilder):
                 # Context manager style
                 with ui.expander("Title"):
@@ -815,7 +834,7 @@ class RouteLitBuilder:
                 # Function call style
                 exp = ui.expander("Title")
                 exp.text("Content")
-        ```
+            ```
         """
         new_key = key or self._new_widget_id("expander", title)
         new_element = self._create_element(
@@ -844,24 +863,27 @@ class RouteLitBuilder:
         Returns:
             List[RouteLitBuilder]: A list of builders for the columns.
 
-        Examples:
-        ```python
+        Example:
+            ```python
             # 2 columns with equal width
             col1, col2 = ui.columns(2)
+
             # usage inline
             col1.text("Column 1")
             col2.text("Column 2")
+
             # usage as context manager
             with col1:
                 ui.text("Column 1")
             with col2:
                 ui.text("Column 2")
+
             # usage with different widths
             col1, col2, col3 = ui.columns([2, 1, 1])
             col1.text("Column 1")
             col2.text("Column 2")
             col3.text("Column 3")
-        ```
+            ```
         """
         if isinstance(spec, int):
             spec = [1] * spec
@@ -902,6 +924,27 @@ class RouteLitBuilder:
     ) -> "RouteLitBuilder":
         """
         Creates a flex container with the given direction, wrap, justify content, align items, align content, gap, and key.
+
+        Args:
+            direction (Literal["row", "col"]): The direction of the flex.
+            wrap (Literal["wrap", "nowrap"]): The wrap of the flex.
+            justify_content (Literal["start", "end", "center", "between", "around", "evenly"]): The justify content of the flex.
+            align_items (Literal["normal", "start", "end", "center", "baseline", "stretch"]): The align items of the flex.
+            align_content (Literal["normal", "start", "end", "center", "between", "around", "evenly"]): The align content of the flex.
+            gap (Optional[str]): The gap of the flex.
+            key (Optional[str]): The key of the flex.
+            kwargs (Dict[str, Any]): The keyword arguments to pass to the flex.
+
+        Returns:
+            RouteLitBuilder: A builder for the flex.
+
+        Example:
+            ```python
+            with ui.flex(direction="row", wrap="wrap", justify_content="center", align_items="center", align_content="center", gap="10px"):
+                ui.text("Flex item 1")
+                ui.text("Flex item 2")
+                ui.text("Flex item 3")
+            ```
         """
         container = self._create_element(
             name="flex",
@@ -965,11 +1008,11 @@ class RouteLitBuilder:
             bool: Whether the button was clicked.
 
         Example:
-        ```python
-        is_clicked = ui.button("Click me", on_click=lambda: print("Button clicked"))
-        if is_clicked:
-            ui.text("Button clicked")
-        ```
+            ```python
+            is_clicked = ui.button("Click me", on_click=lambda: print("Button clicked"))
+            if is_clicked:
+                ui.text("Button clicked")
+            ```
         """
         return self._x_button("button", text, event_name="click", key=key, on_click=on_click, **kwargs)
 
@@ -994,12 +1037,12 @@ class RouteLitBuilder:
             bool: Whether the button was clicked.
 
         Example:
-        ```python
-        with ui.form(key="form_key"):
-            is_submitted = ui.form_submit_button("Submit", on_click=lambda: print("Form submitted"))
-            if is_submitted:
-                ui.text("Form submitted")
-        ```
+            ```python
+            with ui.form(key="form_key"):
+                is_submitted = ui.form_submit_button("Submit", on_click=lambda: print("Form submitted"))
+                if is_submitted:
+                    ui.text("Form submitted")
+            ```
         """
         return self._x_button("button", text, event_name="submit", key=key, on_click=on_click, **kwargs)
 
@@ -1091,10 +1134,10 @@ class RouteLitBuilder:
             str: The text value of the text input.
 
         Example:
-        ```python
-        name = ui.text_input("Name", value="John", on_change=lambda value: print(f"Name changed to {value}"))
-        ui.text(f"Name is {name}")
-        ```
+            ```python
+            name = ui.text_input("Name", value="John", on_change=lambda value: print(f"Name changed to {value}"))
+            ui.text(f"Name is {name}")
+            ```
         """
         return self._x_input(
             "single-text-input",
@@ -1135,10 +1178,10 @@ class RouteLitBuilder:
             str: The text value of the textarea.
 
         Example:
-        ```python
-        text = ui.textarea("Text", value="Hello, world!", on_change=lambda value: print(f"Text changed to {value}"))
-        ui.text(f"Text is {text}")
-        ```
+            ```python
+            text = ui.textarea("Text", value="Hello, world!", on_change=lambda value: print(f"Text changed to {value}"))
+            ui.text(f"Text is {text}")
+            ```
         """
         return self._x_input(
             "single-textarea",
@@ -1175,14 +1218,20 @@ class RouteLitBuilder:
             key (str | None): The key of the radio group.
             on_change (Callable[[str | int | None], None] | None): The function to call when the value changes. The function will be called with the new value.
             kwargs (Dict[str, Any]): The keyword arguments to pass to the radio group.
+
         Returns:
             str | int | None: The value of the selected radio option.
 
         Example:
-        ```python
-        value = ui.radio("Radio", options=["Option 1", {"label": "Option 2", "value": "option2"}, {"label": "Option 3", "value": "option3", "disabled": True}], value="Option 1", on_change=lambda value: print(f"Radio value changed to {value}"))
-        ui.text(f"Radio value is {value}")
-        ```
+            ```python
+            value = ui.radio(
+                "Radio",
+                options=["Option 1", {"label": "Option 2", "value": "option2"}, {"label": "Option 3", "value": "option3", "disabled": True}],
+                value="Option 1",
+                on_change=lambda value: print(f"Radio value changed to {value}"),
+            )
+            ui.text(f"Radio value is {value}")
+            ```
         """
         return self._x_radio_select(
             "radio",
@@ -1226,10 +1275,19 @@ class RouteLitBuilder:
             Any: The value of the select dropdown.
 
         Example:
-        ```python
-        value = ui.select("Select", options=["Option 1", {"label": "Option 2", "value": "option2"}, {"label": "Option 3", "value": "option3", "disabled": True}], value="Option 1", on_change=lambda value: print(f"Select value changed to {value}"))
-        ui.text(f"Select value is {value}")
-        ```
+            ```python
+            value = ui.select(
+                "Select",
+                options=[
+                    "Option 1",
+                    {"label": "Option 2", "value": "option2"},
+                    {"label": "Option 3", "value": "option3", "disabled": True},
+                ],
+                value="Option 1",
+                on_change=lambda value: print(f"Select value changed to {value}"),
+            )
+            ui.text(f"Select value is {value}")
+            ```
         """
         return self._x_radio_select(
             "select",
@@ -1312,11 +1370,11 @@ class RouteLitBuilder:
             bool: Whether the checkbox is checked.
 
         Example:
-        ```python
-        is_checked = ui.checkbox("Check me", on_change=lambda checked: print(f"Checkbox is {'checked' if checked else 'unchecked'}"))
-        if is_checked:
-            ui.text("Checkbox is checked")
-        ```
+            ```python
+            is_checked = ui.checkbox("Check me", on_change=lambda checked: print(f"Checkbox is {'checked' if checked else 'unchecked'}"))
+            if is_checked:
+                ui.text("Checkbox is checked")
+            ```
         """
         return self._x_checkbox(
             "single-checkbox",
@@ -1385,14 +1443,24 @@ class RouteLitBuilder:
             format_func (Callable[[Any], str] | None): The function to format the options.
             flex_direction (Literal["row", "col"]): The direction of the checkbox group: "row", "col".
             kwargs (Dict[str, Any]): The keyword arguments to pass to the checkbox group.
+
         Returns:
             List[str | int]: The value of the checkbox group.
 
         Example:
-        ```python
-        selected_options = ui.checkbox_group("Checkbox Group", options=["Option 1", {"label": "Option 2", "value": "option2"}, {"label": "Option 3", "value": "option3", "disabled": True}], value=["Option 1"], on_change=lambda value: print(f"Checkbox group value changed to {value}"))
-        ui.text(f"Selected options: {', '.join(selected_options) if selected_options else 'None'}")
-        ```
+            ```python
+            selected_options = ui.checkbox_group(
+                "Checkbox Group",
+                options=[
+                    "Option 1",
+                    {"label": "Option 2", "value": "option2"},
+                    {"label": "Option 3", "value": "option3", "disabled": True},
+                ],
+                value=["Option 1"],
+                on_change=lambda value: print(f"Checkbox group value changed to {value}"),
+            )
+            ui.text(f"Selected options: {', '.join(selected_options) if selected_options else 'None'}")
+            ```
         """
         return self._x_checkbox_group(
             "checkbox-group",
@@ -1415,14 +1483,14 @@ class RouteLitBuilder:
             clear_event (bool): Whether to clear the event.
 
         Example:
-        ```python
-        counter = ui.session_state.get("counter", 0)
-        ui.text(f"Counter is {counter}")
-        should_increase = ui.button("Increment")
-        if should_increase:
-            ui.session_state["counter"] = counter + 1
-            ui.rerun()
-        ```
+            ```python
+            counter = ui.session_state.get("counter", 0)
+            ui.text(f"Counter is {counter}")
+            should_increase = ui.button("Increment")
+            if should_increase:
+                ui.session_state["counter"] = counter + 1
+                ui.rerun()
+            ```
         """
         if self.should_rerun_event:
             self.should_rerun_event.set()

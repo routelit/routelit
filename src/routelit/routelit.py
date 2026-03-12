@@ -146,16 +146,17 @@ class RouteLit(Generic[BuilderType]):
         """
         The current builder instance.
         Use this in conjunction with `response(..., inject_builder=False)`
-        example:
-        ```python
-        rl = RouteLit()
 
-        def my_view():
-            rl.ui.text("Hello, world!")
+        Example:
+            ```python
+            rl = RouteLit()
 
-        request = ...
-        response = rl.response(my_view, request, inject_builder=False)
-        ```
+            def my_view():
+                rl.ui.text("Hello, world!")
+
+            request = ...
+            response = rl.response(my_view, request, inject_builder=False)
+            ```
         """
         return cast(BuilderType, self._session_builder_context.get())
 
@@ -181,24 +182,24 @@ class RouteLit(Generic[BuilderType]):
                 actions (List[Action]), target (Literal["app", "fragment"])
 
         Example:
-        ```python
-        from routelit import RouteLit, RouteLitBuilder
+            ```python
+            from routelit import RouteLit, RouteLitBuilder
 
-        rl = RouteLit()
+            rl = RouteLit()
 
-        def my_view(rl: RouteLitBuilder):
-            rl.text("Hello, world!")
+            def my_view(rl: RouteLitBuilder):
+                rl.text("Hello, world!")
 
-        request = ...
-        response = rl.response(my_view, request)
+            request = ...
+            response = rl.response(my_view, request)
 
-        # example with dependency
-        def my_view(rl: RouteLitBuilder, name: str):
-            rl.text(f"Hello, {name}!")
+            # example with dependency
+            def my_view(rl: RouteLitBuilder, name: str):
+                rl.text(f"Hello, {name}!")
 
-        request = ...
-        response = rl.response(my_view, request, name="John")
-        ```
+            request = ...
+            response = rl.response(my_view, request, name="John")
+            ```
         """
         if request.method == "GET":
             return self.handle_get_request(view_fn, request, **kwargs)
@@ -674,20 +675,20 @@ class RouteLit(Generic[BuilderType]):
             The decorator function.
 
         Example:
-        ```python
-        from routelit import RouteLit, RouteLitBuilder
+            ```python
+            from routelit import RouteLit, RouteLitBuilder
 
-        rl = RouteLit()
+            rl = RouteLit()
 
-        @rl.fragment()
-        def my_fragment(ui: RouteLitBuilder):
-            ui.text("Hello, world!")
+            @rl.fragment()
+            def my_fragment(ui: RouteLitBuilder):
+                ui.text("Hello, world!")
 
-        @rl.fragment()
-        def my_fragment2():
-            ui = rl.ui
-            ui.text("Hello, world!")
-        ```
+            @rl.fragment()
+            def my_fragment2():
+                ui = rl.ui
+                ui.text("Hello, world!")
+            ```
         """
 
         def decorator_fragment(view_fn: ViewFn) -> ViewFn:
@@ -749,29 +750,29 @@ class RouteLit(Generic[BuilderType]):
             The decorator function.
 
         Example:
-        ```python
-        from routelit import RouteLit, RouteLitBuilder
+            ```python
+            from routelit import RouteLit, RouteLitBuilder
 
-        rl = RouteLit()
+            rl = RouteLit()
 
-        @rl.dialog()
-        def my_dialog(ui: RouteLitBuilder):
-            ui.text("Hello, world!")
+            @rl.dialog()
+            def my_dialog(ui: RouteLitBuilder):
+                ui.text("Hello, world!")
 
-        def my_main_view(ui: RouteLitBuilder):
-            if ui.button("Open dialog"):
-                my_dialog(ui)
+            def my_main_view(ui: RouteLitBuilder):
+                if ui.button("Open dialog"):
+                    my_dialog(ui)
 
-        @rl.dialog()
-        def my_dialog2():
-            ui = rl.ui
-            ui.text("Hello, world!")
+            @rl.dialog()
+            def my_dialog2():
+                ui = rl.ui
+                ui.text("Hello, world!")
 
-        def my_main_view2():
-            ui = rl.ui
-            if ui.button("Open dialog"):
-                my_dialog2()
-        ```
+            def my_main_view2():
+                ui = rl.ui
+                if ui.button("Open dialog"):
+                    my_dialog2()
+            ```
         """
 
         def dialog_builder(
@@ -794,21 +795,21 @@ class RouteLit(Generic[BuilderType]):
             A decorator function for the specified overlay type.
 
         Example:
-        ```python
-        rl = RouteLit()
+            ```python
+            rl = RouteLit()
 
-        # Create a custom overlay decorator
-        popup = rl.create_overlay_decorator("popup", "popup")
-        sheet = rl.create_overlay_decorator("sheet", "drawer")  # Use drawer method for sheet
+            # Create a custom overlay decorator
+            popup = rl.create_overlay_decorator("popup", "popup")
+            sheet = rl.create_overlay_decorator("sheet", "drawer")  # Use drawer method for sheet
 
-        @popup()
-        def my_popup(ui: RouteLitBuilder):
-            ui.text("Hello from popup!")
+            @popup()
+            def my_popup(ui: RouteLitBuilder):
+                ui.text("Hello from popup!")
 
-        @sheet()
-        def my_sheet(ui: RouteLitBuilder):
-            ui.text("Hello from sheet!")
-        ```
+            @sheet()
+            def my_sheet(ui: RouteLitBuilder):
+                ui.text("Hello from sheet!")
+            ```
         """
 
         def overlay_decorator(key: Optional[str] = None, **kwargs: Any) -> Callable[[ViewFn], ViewFn]:

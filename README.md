@@ -8,7 +8,7 @@
 
 ![Routelit](https://wsrv.nl/?url=res.cloudinary.com/rolangom/image/upload/v1747976918/routelit/routelit_c2otsv.png&w=300&h=300)
 
-**routelit** is a Python framework for building interactive web user interfaces that are framework-agnostic and easy to use. It allows you to create dynamic web applications with a simple, declarative API similar to Streamlit, but designed to work with any HTTP framework (Flask, FastAPI, Django, etc.).
+**routelit** is a Python library for building interactive web user interfaces that are framework-agnostic and easy to use. It allows you to create dynamic web applications with a simple, declarative API similar to Streamlit, but designed to work with any HTTP framework (Flask, FastAPI, Django, etc.).
 
 ## ✨ Features
 
