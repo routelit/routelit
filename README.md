@@ -48,25 +48,96 @@ def my_app(builder: RouteLitBuilder):
         builder.text(f"Hello, {name}!")
 
     builder.markdown("This is a **markdown** text with *emphasis*.")
+```
 
-# Use with your preferred web framework
-# Example with Flask:
-from flask import Flask, request
+### Flask
+
+```bash
+pip install routelit-flask
+```
+
+```python
+from flask import Flask
+from routelit import RouteLit, RouteLitBuilder
+from routelit_flask import RouteLitFlaskAdapter
 
 app = Flask(__name__)
+rl = RouteLit()
+adapter = RouteLitFlaskAdapter(rl).configure(app)
 
-flask_adapter = ... # TODO: publish package for this
+def index_view(rl: RouteLitBuilder):
+    rl.text("Hello, World!")
 
 @app.route("/", methods=["GET", "POST"])
 def index():
+    return adapter.response(index_view)
+```
 
-    # Return HTML response
-    return flask_adapter.response(my_app)
+### FastAPI
+
+```bash
+pip install routelit-fastapi
+```
+
+```python
+from fastapi import FastAPI, Request
+from routelit import RouteLit, RouteLitBuilder
+from routelit_fastapi import RouteLitFastAPIAdapter
+
+app = FastAPI()
+rl = RouteLit()
+adapter = RouteLitFastAPIAdapter(rl).configure(app)
+
+def index_view(rl: RouteLitBuilder):
+    rl.text("Hello, World!")
+
+@app.api_route("/", methods=["GET", "POST"])
+async def index(request: Request):
+    return await adapter.response(index_view, request)
+
+# Or use the simplified decorator:
+@adapter.route("/")
+def index_view(rl: RouteLitBuilder):
+    rl.text("Hello, World!")
+```
+
+### Django
+
+```bash
+pip install routelit-django
+```
+
+```python
+# views.py
+from routelit import RouteLit, RouteLitBuilder
+from routelit_django import RouteLitDjangoAdapter, DjangoSessionStorage
+
+rl = RouteLit(session_storage=DjangoSessionStorage())
+adapter = RouteLitDjangoAdapter(rl)
+
+def index_view(rl: RouteLitBuilder):
+    rl.text("Hello, World!")
+
+def index(request):
+    return adapter.response(index_view, request)
+```
+
+```python
+# urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('', views.index, name='index'),
+]
+
+views.adapter.configure(urlpatterns)
 ```
 
 ## 🏗️ Core Concepts
 
 ### Builder Pattern
+
 RouteLit uses a builder pattern where you define your UI using a `RouteLitBuilder` instance:
 
 ```python
@@ -84,6 +155,7 @@ def my_view(builder: RouteLitBuilder):
 ```
 
 ### State Management
+
 RouteLit automatically manages state between requests:
 
 ```python
@@ -99,6 +171,7 @@ def counter_app(builder: RouteLitBuilder):
 ```
 
 ### Interactive Components
+
 Build rich forms and interactive elements:
 
 ```python
@@ -121,7 +194,6 @@ def form_example(builder: RouteLitBuilder):
 ## 🔧 Framework Integration
 
 RouteLit is designed to work with any Python web framework.
-TODO: Add framework integration examples.
 
 ## 📚 Documentation
 

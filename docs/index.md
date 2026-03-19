@@ -55,3 +55,64 @@ def index_view(rl: RouteLitBuilder):
 def index():
     return rl_adapter.response(index_view)
 ```
+
+### FastAPI
+
+```bash
+uv add routelit-fastapi
+```
+
+```python
+from fastapi import FastAPI, Request
+from routelit import RouteLit, RouteLitBuilder
+from routelit_fastapi import RouteLitFastAPIAdapter
+
+app = FastAPI()
+rl = RouteLit()
+adapter = RouteLitFastAPIAdapter(rl).configure(app)
+
+def index_view(rl: RouteLitBuilder):
+    rl.text("Hello, World!")
+
+@app.api_route("/", methods=["GET", "POST"])
+async def index(request: Request):
+    return await adapter.response(index_view, request)
+
+# Or use the simplified decorator:
+@adapter.route("/")
+def index_view(rl: RouteLitBuilder):
+    rl.text("Hello, World!")
+```
+
+### Django
+
+```bash
+uv add routelit-django
+```
+
+```python
+# views.py
+from routelit import RouteLit, RouteLitBuilder
+from routelit_django import RouteLitDjangoAdapter, DjangoSessionStorage
+
+rl = RouteLit(session_storage=DjangoSessionStorage())
+adapter = RouteLitDjangoAdapter(rl)
+
+def index_view(rl: RouteLitBuilder):
+    rl.text("Hello, World!")
+
+def index(request):
+    return adapter.response(index_view, request)
+```
+
+```python
+# urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('', views.index, name='index'),
+]
+
+views.adapter.configure(urlpatterns)
+```
